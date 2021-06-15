@@ -15,6 +15,7 @@
 		7728B08A25FF0C1B00A87017 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7728B08825FF0C1B00A87017 /* LaunchScreen.storyboard */; };
 		7728B09525FF0C1C00A87017 /* TextVueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7728B09425FF0C1C00A87017 /* TextVueTests.swift */; };
 		7728B0A025FF0C1C00A87017 /* TextVueUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7728B09F25FF0C1C00A87017 /* TextVueUITests.swift */; };
+		77A2622A266AC44100D61E5A /* pastScansViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A26229266AC44100D61E5A /* pastScansViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +50,7 @@
 		7728B09B25FF0C1C00A87017 /* TextVueUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TextVueUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7728B09F25FF0C1C00A87017 /* TextVueUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextVueUITests.swift; sourceTree = "<group>"; };
 		7728B0A125FF0C1C00A87017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		77A26229266AC44100D61E5A /* pastScansViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = pastScansViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -106,6 +108,7 @@
 				7728B08625FF0C1B00A87017 /* Assets.xcassets */,
 				7728B08825FF0C1B00A87017 /* LaunchScreen.storyboard */,
 				7728B08B25FF0C1B00A87017 /* Info.plist */,
+				77A26229266AC44100D61E5A /* pastScansViewController.swift */,
 			);
 			path = TextVue;
 			sourceTree = "<group>";
@@ -261,6 +264,7 @@
 				7728B08225FF0C0E00A87017 /* ViewController.swift in Sources */,
 				7728B07E25FF0C0E00A87017 /* AppDelegate.swift in Sources */,
 				7728B08025FF0C0E00A87017 /* SceneDelegate.swift in Sources */,
+				77A2622A266AC44100D61E5A /* pastScansViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -437,6 +441,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = T4CF832YU5;
 				INFOPLIST_FILE = TextVue/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -445,7 +450,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.developers.TextVue;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -455,6 +460,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = T4CF832YU5;
 				INFOPLIST_FILE = TextVue/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -463,7 +469,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.developers.TextVue;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
