@@ -13,8 +13,6 @@
 		7728B08525FF0C0E00A87017 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7728B08325FF0C0E00A87017 /* Main.storyboard */; };
 		7728B08725FF0C1B00A87017 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7728B08625FF0C1B00A87017 /* Assets.xcassets */; };
 		7728B08A25FF0C1B00A87017 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7728B08825FF0C1B00A87017 /* LaunchScreen.storyboard */; };
-		7728B09525FF0C1C00A87017 /* TextVueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7728B09425FF0C1C00A87017 /* TextVueTests.swift */; };
-		7728B0A025FF0C1C00A87017 /* TextVueUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7728B09F25FF0C1C00A87017 /* TextVueUITests.swift */; };
 		77A2622A266AC44100D61E5A /* pastScansViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A26229266AC44100D61E5A /* pastScansViewController.swift */; };
 		77BF6CA726D4AC82004420C1 /* Global.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77BF6CA626D4AC82004420C1 /* Global.swift */; };
 /* End PBXBuildFile section */
@@ -46,11 +44,7 @@
 		7728B08925FF0C1B00A87017 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		7728B08B25FF0C1B00A87017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7728B09025FF0C1C00A87017 /* TextVueTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TextVueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		7728B09425FF0C1C00A87017 /* TextVueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextVueTests.swift; sourceTree = "<group>"; };
-		7728B09625FF0C1C00A87017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7728B09B25FF0C1C00A87017 /* TextVueUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TextVueUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		7728B09F25FF0C1C00A87017 /* TextVueUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextVueUITests.swift; sourceTree = "<group>"; };
-		7728B0A125FF0C1C00A87017 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		77A26229266AC44100D61E5A /* pastScansViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = pastScansViewController.swift; sourceTree = "<group>"; };
 		77BF6CA626D4AC82004420C1 /* Global.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Global.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -84,8 +78,6 @@
 			isa = PBXGroup;
 			children = (
 				7728B07C25FF0C0E00A87017 /* TextVue */,
-				7728B09325FF0C1C00A87017 /* TextVueTests */,
-				7728B09E25FF0C1C00A87017 /* TextVueUITests */,
 				7728B07B25FF0C0E00A87017 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -114,24 +106,6 @@
 				77BF6CA626D4AC82004420C1 /* Global.swift */,
 			);
 			path = TextVue;
-			sourceTree = "<group>";
-		};
-		7728B09325FF0C1C00A87017 /* TextVueTests */ = {
-			isa = PBXGroup;
-			children = (
-				7728B09425FF0C1C00A87017 /* TextVueTests.swift */,
-				7728B09625FF0C1C00A87017 /* Info.plist */,
-			);
-			path = TextVueTests;
-			sourceTree = "<group>";
-		};
-		7728B09E25FF0C1C00A87017 /* TextVueUITests */ = {
-			isa = PBXGroup;
-			children = (
-				7728B09F25FF0C1C00A87017 /* TextVueUITests.swift */,
-				7728B0A125FF0C1C00A87017 /* Info.plist */,
-			);
-			path = TextVueUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -276,7 +250,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7728B09525FF0C1C00A87017 /* TextVueTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -284,7 +257,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7728B0A025FF0C1C00A87017 /* TextVueUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

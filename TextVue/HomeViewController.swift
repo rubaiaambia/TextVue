@@ -47,9 +47,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     var videoPreviewLayer: AVCaptureVideoPreviewLayer!
     
     
-    //Activated when the view’s content is first painted to the screen
-    
-    override func viewWillAppear(_ animated: Bool) {
+    /**Activated when the view’s content is first painted to the screen*/
+    override func viewWillAppear(_ animated: Bool){
         setNavButtons()
         setTopNavButtons()
     }
@@ -71,7 +70,6 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     }
     
     override func viewDidAppear(_ animated: Bool) {
-        //cameraView()
     }
     
     override func viewDidLoad(){
@@ -135,6 +133,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         translationSegmentedControl.setTitleTextAttributes([NSAttributedString.Key.foregroundColor: appThemeColor], for: .selected)
         
         translationSegmentedControl.frame.origin = CGPoint(x: view.frame.width/2 - translationSegmentedControl.frame.width/2, y: view.safeAreaInsets.top + translationSegmentedControl.frame.height)
+        
+        view.bringSubviewToFront(translationSegmentedControl)
         
         myProfileButton = UIButton(frame: CGRect(x: view.frame.minX + topButtonSize/4, y: translationSegmentedControl.frame.origin.y + topButtonSize/4, width: topButtonSize, height: topButtonSize))
         myProfileButton.setImage(UIImage(systemName: "person.crop.circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -295,6 +295,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         let image = UIImage(data: imageData)
         let imageView = UIImageView()
         imageView.image = image
+        imageView.frame = view.frame
+        imageView.contentMode = .scaleAspectFill
+        
+        view.addSubview(imageView)
     }
     
     func showCaptureButtons(animated: Bool){
