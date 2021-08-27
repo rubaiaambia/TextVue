@@ -1,5 +1,5 @@
 //
-//  ViewController.swift
+//  HomeViewController.swift
 //  TextVue
 //
 //  Created by Rubaia Ambia on 3/14/21.
@@ -46,18 +46,42 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     var stillImageOutput: AVCapturePhotoOutput =  AVCapturePhotoOutput()
     var videoPreviewLayer: AVCaptureVideoPreviewLayer!
     
+    /**Blurred UIView that can overlayed ontop of another view as a subview*/
+    lazy var blurredView = getBlurredView()
+    
+    /** Detect if the user interfaxe style has changed when the trait collection is altered either by device orientation changes or appearance changes to name a few*/
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        let hasUserInterfaceStyleChanged = previousTraitCollection!.hasDifferentColorAppearance(comparedTo: traitCollection)
+        if(hasUserInterfaceStyleChanged == true){
+            let _ = traitCollection.userInterfaceStyle // Either .unspecified, .light, or .dark // Update your user interface based on the appearance }
+            loadDarkModePreference()
+        }
+    }
+    
+    /**Create a blurred UIView and return it back to a lazy variable to be used when it's needed*/
+    func getBlurredView()->UIVisualEffectView{
+        let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .regular))
+        effectView.frame = view.frame
+        return effectView
+    }
     
     /**Activated when the view’s content is first painted to the screen*/
     override func viewWillAppear(_ animated: Bool){
-        setNavButtons()
-        setTopNavButtons()
+        loadDarkModePreference()
+        presetCameraPreview()
+        configureThisView()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
     }
     
     @objc func appMovedToBackground(){
-        
+        view.addSubview(blurredView)
     }
     
     @objc func appMovedToForeground(){
+        blurredView.removeFromSuperview()
         removeCaptureButtonAnimations()
         animateCaptureButton()
     }
@@ -76,8 +100,12 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         super.viewDidLoad()
         setNotificationCenter()
         setCameraView()
+        setNavButtons()
+        setTopNavButtons()
     }
     
+    //Logic for viewing capturing and processing images
+    /** Access the camera and set up the specifications for the hardware API*/
     func setCameraView(){
         captureSession.sessionPreset = .high
         guard let backCamera = AVCaptureDevice.default(for: AVMediaType.video)
@@ -98,6 +126,12 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
+    /** Set the frame of the camera preview to that of the view's frame to prevent this resizing from */
+    func presetCameraPreview(){
+        videoPreviewLayer.frame = view.frame
+    }
+    
+    /** Create a video preview that corresponds to the dimensions of the user's device*/
     func setupLivePreview() {
         videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
         
@@ -112,6 +146,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
+    /** Constrain the video preview's layer to the dimensions of the device*/
     func constrainPreviewLayer(){
         DispatchQueue.main.asyncAfter(deadline: .now()){[self] in
             videoPreviewLayer.frame = view.bounds
@@ -119,20 +154,43 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
+    /** Button activated logic that triggers a capture event from the output protocol*/
     @objc func takePhoto(sender: UIButton){
         hapticFeedBack(FeedbackStyle: .medium)
         let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
         stillImageOutput.capturePhoto(with: settings, delegate: self)
     }
     
+    
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        
+        guard let imageData = photo.fileDataRepresentation()
+            else { return }
+        
+        let image = UIImage(data: imageData)
+        let imageView = UIImageView()
+        imageView.image = image
+        imageView.frame = view.frame
+        imageView.contentMode = .scaleAspectFill
+        
+        view.addSubview(imageView)
+    }
+    //Logic for viewing capturing and processing images
+    
+    /** Basic styling for the current view presented by this view controller class*/
+    func configureThisView(){
+        //self.view.backgroundColor = backgroundColor
+    }
+    
+    /** Create Top navigation buttons*/
     func setTopNavButtons(){
         topButtonSize = view.frame.width/4 - view.frame.width * 0.12
         
+        translationSegmentedControl.selectedSegmentTintColor = UIColor.white
         translationSegmentedControl.setTitleTextAttributes([NSAttributedString.Key.foregroundColor: UIColor.white], for: .normal)
-        
         translationSegmentedControl.setTitleTextAttributes([NSAttributedString.Key.foregroundColor: appThemeColor], for: .selected)
-        
         translationSegmentedControl.frame.origin = CGPoint(x: view.frame.width/2 - translationSegmentedControl.frame.width/2, y: view.safeAreaInsets.top + translationSegmentedControl.frame.height)
+        translationSegmentedControl.isExclusiveTouch = true
         
         view.bringSubviewToFront(translationSegmentedControl)
         
@@ -148,6 +206,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         myProfileButton.layer.shadowPath = UIBezierPath(rect: myProfileButton.bounds).cgPath
         myProfileButton.imageEdgeInsets = UIEdgeInsets(top: myProfileButton.frame.height * 0.25, left: myProfileButton.frame.height * 0.25, bottom: myProfileButton.frame.height * 0.25, right: myProfileButton.frame.height * 0.25)
         myProfileButton.backgroundColor = appThemeColor
+        myProfileButton.isExclusiveTouch = true
         
         settingsButton = UIButton(frame: CGRect(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4, width: topButtonSize, height: topButtonSize))
         settingsButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -161,6 +220,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         settingsButton.layer.shadowPath = UIBezierPath(rect: settingsButton.bounds).cgPath
         settingsButton.imageEdgeInsets = UIEdgeInsets(top: settingsButton.frame.height * 0.25, left: settingsButton.frame.height * 0.25, bottom: settingsButton.frame.height * 0.25, right: settingsButton.frame.height * 0.25)
         settingsButton.backgroundColor = appThemeColor
+        settingsButton.isExclusiveTouch = true
         
         topNavButtons.append(myProfileButton)
         topNavButtons.append(settingsButton)
@@ -169,7 +229,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         view.addSubview(settingsButton)
     }
     
-    /**Create the navigation buttons*/
+    /**Create navigation buttons*/
     func setNavButtons(){
         bottomButtonSize = view.frame.width/4 - view.frame.width * 0.08
         
@@ -180,11 +240,17 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         importButton.contentHorizontalAlignment = .center
         importButton.layer.cornerRadius = importButton.frame.height/2
         importButton.layer.shadowColor = UIColor.darkGray.cgColor
-        importButton.layer.shadowRadius = importButton.frame.height/2
-        importButton.layer.shadowOpacity = 0.25
-        importButton.layer.shadowPath = UIBezierPath(rect: importButton.bounds).cgPath
+        importButton.layer.shadowRadius = 1
+        importButton.layer.shadowOpacity = 1
+        importButton.clipsToBounds = true
+        importButton.layer.masksToBounds = false
+        importButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        importButton.layer.shadowPath = UIBezierPath(roundedRect: importButton.bounds, cornerRadius: importButton.layer.cornerRadius).cgPath
         importButton.imageEdgeInsets = UIEdgeInsets(top: importButton.frame.height * 0.25, left: importButton.frame.height * 0.25, bottom: importButton.frame.height * 0.25, right: importButton.frame.height * 0.25)
         importButton.backgroundColor = appThemeColor
+        importButton.addTarget(self, action: #selector(bottomNavButtonPressed), for: .touchDown)
+        importButton.tag = 0
+        importButton.isExclusiveTouch = true/**Prevent other buttons from being pressed while this button is being pressed*/
         
         textToSpeechButton = UIButton(frame: CGRect(x: view.frame.midX + 10, y: view.frame.maxY - bottomButtonSize * 1.5, width: bottomButtonSize, height: bottomButtonSize))
         textToSpeechButton.setImage(UIImage(systemName: "waveform", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -193,11 +259,17 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         textToSpeechButton.contentHorizontalAlignment = .center
         textToSpeechButton.layer.cornerRadius = textToSpeechButton.frame.height/2
         textToSpeechButton.layer.shadowColor = UIColor.darkGray.cgColor
-        textToSpeechButton.layer.shadowRadius = textToSpeechButton.frame.height/2
-        textToSpeechButton.layer.shadowOpacity = 0.25
-        textToSpeechButton.layer.shadowPath = UIBezierPath(rect: textToSpeechButton.bounds).cgPath
+        textToSpeechButton.layer.shadowRadius = 1
+        textToSpeechButton.layer.shadowOpacity = 1
+        textToSpeechButton.clipsToBounds = true
+        textToSpeechButton.layer.masksToBounds = false
+        textToSpeechButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        textToSpeechButton.layer.shadowPath = UIBezierPath(roundedRect: textToSpeechButton.bounds, cornerRadius: textToSpeechButton.layer.cornerRadius).cgPath
         textToSpeechButton.imageEdgeInsets = UIEdgeInsets(top: textToSpeechButton.frame.height * 0.25, left: textToSpeechButton.frame.height * 0.25, bottom: textToSpeechButton.frame.height * 0.25, right: textToSpeechButton.frame.height * 0.25)
         textToSpeechButton.backgroundColor = appThemeColor
+        textToSpeechButton.addTarget(self, action: #selector(bottomNavButtonPressed), for: .touchDown)
+        textToSpeechButton.tag = 1
+        textToSpeechButton.isExclusiveTouch = true
         
         pastHistoryButton = UIButton(frame: CGRect(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY - bottomButtonSize * 1.5, width: bottomButtonSize, height: bottomButtonSize))
         pastHistoryButton.setImage(UIImage(systemName: "externaldrive.fill.badge.icloud", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -206,11 +278,17 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         pastHistoryButton.contentHorizontalAlignment = .center
         pastHistoryButton.layer.cornerRadius = pastHistoryButton.frame.height/2
         pastHistoryButton.layer.shadowColor = UIColor.darkGray.cgColor
-        pastHistoryButton.layer.shadowRadius = pastHistoryButton.frame.height/2
-        pastHistoryButton.layer.shadowOpacity = 0.25
-        pastHistoryButton.layer.shadowPath = UIBezierPath(rect: pastHistoryButton.bounds).cgPath
+        pastHistoryButton.layer.shadowRadius = 1
+        pastHistoryButton.layer.shadowOpacity = 1
+        pastHistoryButton.clipsToBounds = true
+        pastHistoryButton.layer.masksToBounds = false
+        pastHistoryButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        pastHistoryButton.layer.shadowPath = UIBezierPath(roundedRect: pastHistoryButton.bounds, cornerRadius: pastHistoryButton.layer.cornerRadius).cgPath
         pastHistoryButton.imageEdgeInsets = UIEdgeInsets(top: pastHistoryButton.frame.height * 0.25, left: pastHistoryButton.frame.height * 0.25, bottom: pastHistoryButton.frame.height * 0.25, right: pastHistoryButton.frame.height * 0.25)
         pastHistoryButton.backgroundColor = appThemeColor
+        pastHistoryButton.addTarget(self, action: #selector(bottomNavButtonPressed), for: .touchDown)
+        pastHistoryButton.tag = 2
+        pastHistoryButton.isExclusiveTouch = true
         
         transcribeSpeechBubbleButton = UIButton(frame: CGRect(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY - bottomButtonSize * 1.5, width: bottomButtonSize, height: bottomButtonSize))
         transcribeSpeechBubbleButton.setImage(UIImage(systemName: "text.bubble.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -219,11 +297,17 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         transcribeSpeechBubbleButton.contentHorizontalAlignment = .center
         transcribeSpeechBubbleButton.layer.cornerRadius = transcribeSpeechBubbleButton.frame.height/2
         transcribeSpeechBubbleButton.layer.shadowColor = UIColor.darkGray.cgColor
-        transcribeSpeechBubbleButton.layer.shadowRadius = transcribeSpeechBubbleButton.frame.height/2
-        transcribeSpeechBubbleButton.layer.shadowOpacity = 0.25
-        transcribeSpeechBubbleButton.layer.shadowPath = UIBezierPath(rect: transcribeSpeechBubbleButton.bounds).cgPath
+        transcribeSpeechBubbleButton.layer.shadowRadius = 1
+        transcribeSpeechBubbleButton.layer.shadowOpacity = 1
+        transcribeSpeechBubbleButton.clipsToBounds = true
+        transcribeSpeechBubbleButton.layer.masksToBounds = false
+        transcribeSpeechBubbleButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        transcribeSpeechBubbleButton.layer.shadowPath = UIBezierPath(roundedRect: transcribeSpeechBubbleButton.bounds, cornerRadius: transcribeSpeechBubbleButton.layer.cornerRadius).cgPath
         transcribeSpeechBubbleButton.imageEdgeInsets = UIEdgeInsets(top: transcribeSpeechBubbleButton.frame.height * 0.25, left: transcribeSpeechBubbleButton.frame.height * 0.25, bottom: transcribeSpeechBubbleButton.frame.height * 0.25, right: transcribeSpeechBubbleButton.frame.height * 0.25)
         transcribeSpeechBubbleButton.backgroundColor = appThemeColor
+        transcribeSpeechBubbleButton.addTarget(self, action: #selector(bottomNavButtonPressed), for: .touchDown)
+        transcribeSpeechBubbleButton.tag = 3
+        transcribeSpeechBubbleButton.isExclusiveTouch = true
         
         flashLightButton = UIButton(frame: CGRect(x: view.frame.midX - bottomButtonSize/2, y: importButton.frame.minY - (bottomButtonSize * 1), width: bottomButtonSize, height: bottomButtonSize))
         flashLightButton.setImage(UIImage(systemName: "bolt.slash.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -232,6 +316,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         flashLightButton.contentHorizontalAlignment = .center
         flashLightButton.imageEdgeInsets = UIEdgeInsets(top: flashLightButton.frame.height * 0.2, left: flashLightButton.frame.height * 0.2, bottom: flashLightButton.frame.height * 0.2, right: flashLightButton.frame.height * 0.2)
         flashLightButton.backgroundColor = UIColor.clear
+        flashLightButton.isExclusiveTouch = true
         
         capturePictureButton = UIButton(frame: CGRect(x: view.frame.midX - bottomButtonSize/2, y: flashLightButton.frame.minY - (bottomButtonSize), width: (bottomButtonSize), height: (bottomButtonSize)))
         capturePictureButton.setImage(UIImage(systemName: "circle", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -240,6 +325,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         capturePictureButton.contentHorizontalAlignment = .center
         capturePictureButton.backgroundColor = UIColor.clear
         capturePictureButton.addTarget(self, action: #selector(takePhoto), for: .touchDown)
+        capturePictureButton.isExclusiveTouch = true
         
         radialBorder1.frame = capturePictureButton.frame
         radialBorder2.frame = capturePictureButton.frame
@@ -287,20 +373,70 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         view.addSubview(capturePictureButton)
     }
     
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+    /** Action handler for  touch down events on the bottom navigation buttons*/
+    @objc func bottomNavButtonPressed(sender: UIButton){
+        /** Give the user a nice touch based reward for tapping the button*/
+        hapticFeedBack(FeedbackStyle: .rigid)
         
-        guard let imageData = photo.fileDataRepresentation()
-            else { return }
+        /** Prevent the user from triggering the button in rapid succession*/
+        sender.isEnabled = false
         
-        let image = UIImage(data: imageData)
-        let imageView = UIImageView()
-        imageView.image = image
-        imageView.frame = view.frame
-        imageView.contentMode = .scaleAspectFill
+        /** Make the view slightly transparent and scale it down followed by immediately undoing said transforms and alpha changes*/
+        UIView.animate(withDuration: 0.25, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            sender.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+        }
+        UIView.animate(withDuration: 0.25, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            sender.transform = CGAffineTransform(scaleX: 1, y: 1)
+        }
+        UIView.animate(withDuration: 0.25){
+            sender.alpha = 0.9
+        }
+        UIView.animate(withDuration: 0.25, delay: 0.25){
+            sender.alpha = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){
+        sender.isEnabled = true
+        }
         
-        view.addSubview(imageView)
+        switch sender.tag{
+        /** Import Button*/
+        case 0:
+            break
+        /** Text To Speech Button*/
+        case 1:
+            break
+        /** Past History Button triggers a custom segue*/
+        case 2:
+            //self.navigationController?.pushViewController(PastHistoryViewController(), animated: true)
+            let pastHistoryVC = PastHistoryViewController()
+            
+            /** Make the view controller's view the same shape as the button*/
+            pastHistoryVC.view.frame = sender.frame
+            pastHistoryVC.view.layer.cornerRadius = sender.layer.cornerRadius
+            
+            /** Add the view controller's view to the current view controller's view as a subview*/
+            view.addSubview(pastHistoryVC.view)
+            
+            /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                pastHistoryVC.view.frame.origin = CGPoint(x: view.frame.width/2 - pastHistoryVC.view.frame.width/2, y: view.frame.height/2 - pastHistoryVC.view.frame.height/2)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                pastHistoryVC.view.frame = view.frame
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
+            navigationController?.pushViewController(pastHistoryVC, animated: false)
+            }
+            
+        /** Transcribe Speech Bubble Button*/
+        case 3:
+            break
+        default:
+            return
+        }
     }
     
+    /** Shows capture buttons and associated views statically or in an animated manner*/
     func showCaptureButtons(animated: Bool){
         switch animated {
         case true:
@@ -326,6 +462,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
+    /** Hides capture button and associated views statically or in an animated manner*/
     func hideCaptureButtons(animated: Bool){
         switch animated {
         case true:
@@ -351,6 +488,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
+    /** Hide navigation buttons in a static or animated manner*/
     func hideNavButtons(animated: Bool){
         switch animated {
         case true:
@@ -380,6 +518,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
+    /** Display navigation buttons in a static or animated manner*/
     func showNavButtons(animated: Bool){
         switch animated {
         case true:
@@ -409,6 +548,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
+    /** Removes all the animations given to the capture button*/
     func removeCaptureButtonAnimations(){
         radialBorder3.layer.removeAllAnimations()
         radialBorder2.layer.removeAllAnimations()
