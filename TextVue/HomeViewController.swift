@@ -62,6 +62,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     var videoPreviewLayerActive = false
     /**The current device responsible for the input of the capture session*/
     lazy var currentCamera: AVCaptureDevice? = getCamera()
+    /**The zoom level of the camera*/
+    var zoomFactor: CGFloat = 1
+    /**Button that displays the current zoom factor and enables fast manipulation of it versus pinching*/
+    var zoomFactorButton: UIButton = UIButton()
     
     /**Blurred UIView that can overlayed ontop of another view as a subview*/
     lazy var blurredView = getBlurredView()
@@ -111,6 +115,11 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         saveUserPreferences()
     }
     
+    @objc func appIsInBackground(){
+        resetZoomLevel()
+    }
+    
+    
     @objc func appMovedToBackground(){
         if isTransientViewBeingPresented == false{
             view.addSubview(blurredView)
@@ -140,6 +149,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         notifCenter.addObserver(self, selector: #selector(appMovedToBackground), name: UIApplication.willResignActiveNotification, object: nil)
         notifCenter.addObserver(self, selector: #selector(appMovedToForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
         notifCenter.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+        notifCenter.addObserver(self, selector: #selector(appIsInBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -151,8 +161,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         setCameraView()
         setNavButtons()
         setTopNavButtons()
+        setZoomFactorButton()
         addDoubleTapGesture()
         addSingleTapGesture()
+        addPinchGesture()
     }
     
     //Logic for viewing capturing and processing images
@@ -312,31 +324,31 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         
         
         /**
-        /**Make a view controller that will display the image alongside the parsed text recieved from the text recognition API*/
-        let imageProcessingVC = ImageProcessingViewController()
-        imageProcessingVC.presentingVC = self
-        
-        /** Make the view controller's view the same shape as the button*/
-        imageProcessingVC.view.frame = capturePictureButton.frame
-        imageProcessingVC.view.layer.cornerRadius = capturePictureButton.layer.cornerRadius
-        
-        /**Add this view above all of the others including nav bars*/
-        UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(imageProcessingVC.view)
-        
-        /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
-        UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-            imageProcessingVC.view.frame.origin = CGPoint(x: view.frame.width/2 - imageProcessingVC.view.frame.width/2, y: view.frame.height/2 - imageProcessingVC.view.frame.height/2)
-        }
-        UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-            imageProcessingVC.view.frame = view.frame
-            imageProcessingVC.view.frame.size.height = view.frame.height
-            imageProcessingVC.view.frame.size.width = view.frame.width
-            imageProcessingVC.view.frame.origin = CGPoint(x: view.frame.width/2 - imageProcessingVC.view.frame.width/2, y: view.frame.height/2 - imageProcessingVC.view.frame.height/2)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
-            navigationController?.pushViewController(imageProcessingVC, animated: false)
-        }
-        */
+         /**Make a view controller that will display the image alongside the parsed text recieved from the text recognition API*/
+         let imageProcessingVC = ImageProcessingViewController()
+         imageProcessingVC.presentingVC = self
+         
+         /** Make the view controller's view the same shape as the button*/
+         imageProcessingVC.view.frame = capturePictureButton.frame
+         imageProcessingVC.view.layer.cornerRadius = capturePictureButton.layer.cornerRadius
+         
+         /**Add this view above all of the others including nav bars*/
+         UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(imageProcessingVC.view)
+         
+         /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
+         UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+         imageProcessingVC.view.frame.origin = CGPoint(x: view.frame.width/2 - imageProcessingVC.view.frame.width/2, y: view.frame.height/2 - imageProcessingVC.view.frame.height/2)
+         }
+         UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+         imageProcessingVC.view.frame = view.frame
+         imageProcessingVC.view.frame.size.height = view.frame.height
+         imageProcessingVC.view.frame.size.width = view.frame.width
+         imageProcessingVC.view.frame.origin = CGPoint(x: view.frame.width/2 - imageProcessingVC.view.frame.width/2, y: view.frame.height/2 - imageProcessingVC.view.frame.height/2)
+         }
+         DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
+         navigationController?.pushViewController(imageProcessingVC, animated: false)
+         }
+         */
     }
     
     /** Simply add a UI gesture recognizer that recognizes single taps on the screen to this view controller's view*/
@@ -389,7 +401,92 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             DispatchQueue.main.asyncAfter(deadline: .now() + 1){
                 circleView.removeFromSuperview()
             }
+            
+            /** Crash inbound if the camera device isn't present and the code below is activated, so just return*/
+            guard currentCamera != nil else {
+                return
+            }
+            
+            /** Method for focusing the camera on the point the user touched*/
+            /**Configure the device to focus on the focus point*/
+            let focusPoint = sender.location(in: view)
+            if currentCamera?.position == .back{
+                do {
+                    try currentCamera!.lockForConfiguration()
+                    currentCamera!.focusPointOfInterest = focusPoint
+                    currentCamera!.focusMode = .continuousAutoFocus
+                    //currentCamera!.focusMode = .autoFocus
+                    //currentCamera!.focusMode = .locked
+                    //currentCamera!.exposurePointOfInterest = focusPoint
+                    //currentCamera!.exposureMode = AVCaptureDevice.ExposureMode.continuousAutoExposure
+                    currentCamera!.unlockForConfiguration()
+                }
+                catch {
+                    print("Device unavailable for configuration")
+                }
+            }
         }
+    }
+    
+    /**Pinch recognizer for zooming in the video preview*/
+    @objc func pinch(sender: UIPinchGestureRecognizer){
+        /** Multiply the zoom factor here with the stored zoom factor (if it exists)*/
+        var zoomScale = sender.scale * zoomFactor
+        
+        /** When the pinch event ends then the stored zoom factor is updated, the minimum value for the zoom factor is 1, if the value goes lower than this then the API will crash*/
+        if(sender.state == .ended){
+            zoomFactor = zoomScale >= 1 ? zoomScale : 1
+        }
+    
+        /** Crash inbound if the camera device isn't present and the code below is activated, so just return*/
+        guard currentCamera != nil else {
+            return
+        }
+        
+        do {
+            try currentCamera!.lockForConfiguration()
+            defer{currentCamera?.unlockForConfiguration()}
+            if(zoomScale <= (currentCamera?.activeFormat.videoMaxZoomFactor)! && zoomScale >= 1){
+                currentCamera?.videoZoomFactor = zoomScale
+                    zoomFactorButton.setTitle(String(format: "%.1f", zoomScale)  + "x", for: .normal)
+            }
+            else if(zoomScale >= (currentCamera?.activeFormat.videoMaxZoomFactor)!){
+                zoomScale = (currentCamera?.activeFormat.videoMaxZoomFactor)!
+                currentCamera?.videoZoomFactor = zoomScale
+                    zoomFactorButton.setTitle(String(format: "%.1f", zoomScale)  + "x", for: .normal)
+            }
+            else if(zoomScale <= 1){
+                zoomScale = 1
+                currentCamera?.videoZoomFactor = zoomScale
+                    zoomFactorButton.setTitle(String(format: "%.1f", zoomScale)  + "x", for: .normal)
+            }
+            else{
+                //print("Unable to set video zoom factor: (max \(currentCamera!.activeFormat.videoMaxZoomFactor), asked \(zoomScale))")
+            }
+        }
+        catch {
+            print("\(error.localizedDescription)")
+        }
+    }
+    
+    /** Reset the zoom level of the camera*/
+    func resetZoomLevel(){
+        do {
+            try currentCamera!.lockForConfiguration()
+            defer{currentCamera?.unlockForConfiguration()}
+            currentCamera?.videoZoomFactor = 1
+            zoomFactor = 1
+            zoomFactorButton.setTitle(String(format: "%.1f", zoomFactor) + "x", for: .normal)
+        }
+        catch {
+            print("\(error.localizedDescription)")
+        }
+    }
+    
+    /** Add a pinch recognizer in order to allow the user to zoom in on objects in the preview layer*/
+    func addPinchGesture(){
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinch))
+        view.addGestureRecognizer(pinch)
     }
     
     /** Simply add a UI gesture recognizer that recognizes double taps on the screen to this view controller's view*/
@@ -421,6 +518,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     /** Handler for the switch camera button that triggers the same camera switching operations as the double tap interaction*/
     @objc func switchCameraButtonPressed(sender: UIButton){
+        /** Reset the zoom factor or else the previous zoom will be the basis for the zoom on the next device*/
+        resetZoomLevel()
         sender.isEnabled = false
         /** Delay the pressing of this button, if the user pressed this in rapid sucession they'll block the UI and interrupt the global queue*/
         DispatchQueue.main.asyncAfter(deadline: .now() + 1){
@@ -579,11 +678,34 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
+    /**Create the zoom factor button and add it to the UIView*/
+    func setZoomFactorButton(){
+        let buttonSize = view.frame.width/4 - view.frame.width * 0.14
+        
+        zoomFactorButton = UIButton(frame: CGRect(x: view.frame.midX - buttonSize/2, y: translationSegmentedControl.frame.maxY + 10, width: buttonSize, height: buttonSize))
+  
+        zoomFactorButton.tintColor = UIColor.white
+        zoomFactorButton.setTitle(String(format: "%.1f", zoomFactor) + "x", for: .normal)
+        zoomFactorButton.setTitleColor(UIColor.white, for: .normal)
+        zoomFactorButton.titleLabel?.adjustsFontSizeToFitWidth = true
+        zoomFactorButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .regular)
+        zoomFactorButton.contentHorizontalAlignment = .center
+        zoomFactorButton.layer.cornerRadius = zoomFactorButton.frame.height/2
+        zoomFactorButton.clipsToBounds = true
+        zoomFactorButton.backgroundColor = appThemeColor.withAlphaComponent(0.5)
+        //zoomFactorButton.addTarget(self, action: #selector(zoomFactorButtonPressed), for: .touchDown)
+        /**Mimic of Apple's secondary trigger for their zoom factor button*/
+        //zoomFactorButton.addTarget(self, action: #selector(zoomFactorButtonPressed), for: .touchDragInside)
+        zoomFactorButton.isExclusiveTouch = true
+        
+        view.addSubview(zoomFactorButton)
+    }
+    
     /**Create navigation buttons*/
     func setNavButtons(){
         bottomButtonSize = view.frame.width/4 - view.frame.width * 0.08
         
-        importButton = UIButton(frame: CGRect(x: view.frame.midX - bottomButtonSize, y: view.frame.maxY - bottomButtonSize * 1.5, width: bottomButtonSize, height: bottomButtonSize))
+        importButton = UIButton(frame: CGRect(x: view.frame.midX - (bottomButtonSize + 5), y: view.frame.maxY - bottomButtonSize * 1.5, width: bottomButtonSize, height: bottomButtonSize))
         importButton.setImage(UIImage(systemName: "icloud.and.arrow.down.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
         importButton.tintColor = UIColor.white
         importButton.imageView?.contentMode = .scaleAspectFit
@@ -600,9 +722,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         importButton.backgroundColor = appThemeColor
         importButton.addTarget(self, action: #selector(bottomNavButtonPressed), for: .touchDown)
         importButton.tag = 0
-        importButton.isExclusiveTouch = true/**Prevent other buttons from being pressed while this button is being pressed*/
+        /**Prevent other buttons from being pressed while this button is being pressed*/
+        importButton.isExclusiveTouch = true
         
-        textToSpeechButton = UIButton(frame: CGRect(x: view.frame.midX + 10, y: view.frame.maxY - bottomButtonSize * 1.5, width: bottomButtonSize, height: bottomButtonSize))
+        textToSpeechButton = UIButton(frame: CGRect(x: view.frame.midX + 5, y: view.frame.maxY - bottomButtonSize * 1.5, width: bottomButtonSize, height: bottomButtonSize))
         textToSpeechButton.setImage(UIImage(systemName: "waveform", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
         textToSpeechButton.tintColor = UIColor.white
         textToSpeechButton.imageView?.contentMode = .scaleAspectFit
@@ -969,10 +1092,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
                 bottomNavButtons[0].frame.origin = CGPoint(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY + bottomButtonSize * 5)
             }
             UIView.animate(withDuration: 0.5, delay: 0.2, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - bottomButtonSize, y: view.frame.maxY + bottomButtonSize * 5)
+                bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - (bottomButtonSize + 5), y: view.frame.maxY + bottomButtonSize * 5)
             }
             UIView.animate(withDuration: 0.5, delay: 0.4, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 10, y: view.frame.maxY + bottomButtonSize * 5)
+                bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 5, y: view.frame.maxY + bottomButtonSize * 5)
             }
             UIView.animate(withDuration: 0.5, delay: 0.6, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY + bottomButtonSize * 5)
@@ -983,8 +1106,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             bottomNavButtons[3].isEnabled = false
         case false:
             bottomNavButtons[0].frame.origin = CGPoint(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY + bottomButtonSize * 5)
-            bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - bottomButtonSize, y: view.frame.maxY + bottomButtonSize * 5)
-            bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 10, y: view.frame.maxY + bottomButtonSize * 5)
+            bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - (bottomButtonSize + 5), y: view.frame.maxY + bottomButtonSize * 5)
+            bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 5, y: view.frame.maxY + bottomButtonSize * 5)
             bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY + bottomButtonSize * 5)
             
             bottomNavButtons[0].isEnabled = false
@@ -1002,10 +1125,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
                 bottomNavButtons[0].frame.origin = CGPoint(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY - bottomButtonSize * 1.5)
             }
             UIView.animate(withDuration: 0.5, delay: 0.2, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - bottomButtonSize, y: view.frame.maxY - bottomButtonSize * 1.5)
+                bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - (bottomButtonSize + 5), y: view.frame.maxY - bottomButtonSize * 1.5)
             }
             UIView.animate(withDuration: 0.5, delay: 0.4, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 10, y: view.frame.maxY - bottomButtonSize * 1.5)
+                bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 5, y: view.frame.maxY - bottomButtonSize * 1.5)
             }
             UIView.animate(withDuration: 0.5, delay: 0.6, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY - bottomButtonSize * 1.5)
@@ -1018,8 +1141,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             }
         case false:
             bottomNavButtons[0].frame.origin = CGPoint(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY - bottomButtonSize * 1.5)
-            bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - bottomButtonSize, y: view.frame.maxY - bottomButtonSize * 1.5)
-            bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 10, y: view.frame.maxY - bottomButtonSize * 1.5)
+            bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - (bottomButtonSize + 5), y: view.frame.maxY - bottomButtonSize * 1.5)
+            bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 5, y: view.frame.maxY - bottomButtonSize * 1.5)
             bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY - bottomButtonSize * 1.5)
             bottomNavButtons[0].isEnabled = true
             bottomNavButtons[1].isEnabled = true

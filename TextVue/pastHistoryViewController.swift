@@ -29,6 +29,7 @@ public class PastHistoryViewController: UIViewController{
         super.viewDidDisappear(animated)
         if isBeingDismissed{
             presentingVC.presentationComplete()
+            //view.removeFromSuperview()
         }
     }
     //VC Dismissal Handlers
