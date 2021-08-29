@@ -4,6 +4,11 @@
 //
 //  Created by Rubaia Ambia on 3/14/21.
 //
+/** -   Description: TextVue is an app that allows you to parse all kinds of texts from your environment whether live, still, or imported from your camera roll. Using advanced text recognition API and AI denoising techniques TextVue can see even when there's nothing to see, and with the
+ power of augmented reality, discovering the world around you grabbing text to use in other application with the tap of a finger never seemed so easy. Welcome home to innovation, where we all should be.
+ - Authors: Rubaia Ambia, Justin Cook*/
+
+/**Necessary libraries for the API necessary to make this application possible*/
 import AVFoundation
 import Vision
 import UIKit
@@ -11,6 +16,7 @@ import ImageCaptureCore
 import AVKit
 import CoreVideo
 
+/**The base of operations this is where the magic happens and all other areas of the app are rerouted to*/
 class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     @IBOutlet weak var translationSegmentedControl: UISegmentedControl!
     /**Import from Photo Library Button*/
@@ -23,14 +29,21 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     var transcribeSpeechBubbleButton = UIButton()
     /**Flash Light Button*/
     var flashLightButton = UIButton()
+    /**Bool that controls device torch*/
+    var flashLightOn = false
+    /**A bright UIView that increases the brightness of the environment when the user wants to take a front facing photo with torch options on*/
+    lazy var artificialFlashLight:UIView = artificialFlash()
+    /**Switch Camera Button*/
+    var switchCameraButton = UIButton()
     /**Capture picture Button*/
     var capturePictureButton = UIButton()
     /**Profile Button*/
     var myProfileButton = UIButton()
     /**Settings Menu Button*/
     var settingsButton = UIButton()
-    
+    /** An array of all navigation buttons on the bottom of the screen*/
     var bottomNavButtons = [UIButton]()
+    /** An array of all navigation buttons at the top of the screen*/
     var topNavButtons = [UIButton]()
     
     /** Radial Borders that are animated around the capture button*/
@@ -38,13 +51,15 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     var radialBorder2 = UIView()
     var radialBorder3 = UIView()
     
+    /** Height and width variables for the bottom and top navigation buttons*/
     var bottomButtonSize: CGFloat = 0
     var topButtonSize: CGFloat = 0
     
     /**Capture Session variables*/
-    var captureSession: AVCaptureSession = AVCaptureSession()
-    var stillImageOutput: AVCapturePhotoOutput =  AVCapturePhotoOutput()
+    var captureSession: AVCaptureSession!
+    var stillImageOutput: AVCapturePhotoOutput!
     var videoPreviewLayer: AVCaptureVideoPreviewLayer!
+    lazy var currentCamera: AVCaptureDevice? = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)!
     
     /**Blurred UIView that can overlayed ontop of another view as a subview*/
     lazy var blurredView = getBlurredView()
@@ -59,15 +74,9 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
-    /**Create a blurred UIView and return it back to a lazy variable to be used when it's needed*/
-    func getBlurredView()->UIVisualEffectView{
-        let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .regular))
-        effectView.frame = view.frame
-        return effectView
-    }
-    
     /**Activated when the view’s content is first painted to the screen*/
     override func viewWillAppear(_ animated: Bool){
+        blurredView.removeFromSuperview()
         loadDarkModePreference()
         presetCameraPreview()
         configureThisView()
@@ -78,6 +87,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     @objc func appMovedToBackground(){
         view.addSubview(blurredView)
+        captureSession.stopRunning()
     }
     
     @objc func appMovedToForeground(){
@@ -86,11 +96,18 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         animateCaptureButton()
     }
     
+    /** Activates when the application regains focus*/
+    @objc func appDidBecomeActive(){
+        blurredView.removeFromSuperview()
+        captureSession.startRunning()
+    }
+    
     /** Set up notifications from app delegate to know when the app goes to or from the background state*/
     func setNotificationCenter(){
         let notifCenter = NotificationCenter.default
         notifCenter.addObserver(self, selector: #selector(appMovedToBackground), name: UIApplication.willResignActiveNotification, object: nil)
         notifCenter.addObserver(self, selector: #selector(appMovedToForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+        notifCenter.addObserver(self, selector: #selector(appDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -102,27 +119,40 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         setCameraView()
         setNavButtons()
         setTopNavButtons()
+        addDoubleTapGesture()
+        addSingleTapGesture()
     }
     
     //Logic for viewing capturing and processing images
+    /**Create a blurred UIView and return it back to a lazy variable to be used when it's needed*/
+    func getBlurredView()->UIVisualEffectView{
+        let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .regular))
+        effectView.frame = view.frame
+        return effectView
+    }
+    
     /** Access the camera and set up the specifications for the hardware API*/
     func setCameraView(){
+        captureSession = AVCaptureSession()
         captureSession.sessionPreset = .high
-        guard let backCamera = AVCaptureDevice.default(for: AVMediaType.video)
+        guard currentCamera != nil
         else {
-            print("Unable to access back camera!")
+            print("Unable to access camera!")
             return
         }
         do {
-            let input = try AVCaptureDeviceInput(device: backCamera)
+            let input = try AVCaptureDeviceInput(device: currentCamera!)
+            stillImageOutput = AVCapturePhotoOutput()
             if captureSession.canAddInput(input) && captureSession.canAddOutput(stillImageOutput) {
                 captureSession.addInput(input)
                 captureSession.addOutput(stillImageOutput)
-                setupLivePreview()
+                if(videoPreviewLayer == nil){
+                    setupLivePreview()
+                }
             }
         }
         catch let error  {
-            print("Error Unable to initialize back camera:  \(error.localizedDescription)")
+            print("Error Unable to initialize camera:  \(error.localizedDescription)")
         }
     }
     
@@ -137,6 +167,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         
         videoPreviewLayer.videoGravity = .resizeAspectFill
         videoPreviewLayer.connection?.videoOrientation = .portrait
+        videoPreviewLayer.backgroundColor = UIColor.black.cgColor
         
         view.layer.addSublayer(videoPreviewLayer)
         
@@ -157,15 +188,79 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     /** Button activated logic that triggers a capture event from the output protocol*/
     @objc func takePhoto(sender: UIButton){
         hapticFeedBack(FeedbackStyle: .medium)
-        let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
-        stillImageOutput.capturePhoto(with: settings, delegate: self)
+        
+        /** The original brightness of the user's screen, to be restored after a front facing flash*/
+        let originalBrightness = UIScreen.main.brightness
+        
+        switch flashLightOn {
+        case true:
+            if currentCamera?.position == .back{
+                do{
+                    try currentCamera?.lockForConfiguration()
+                    currentCamera?.torchMode = .on
+                    currentCamera?.unlockForConfiguration()
+                }
+                catch{
+                    print("ERROR: Torch could not be used")
+                }
+            }
+            else{
+                view.addSubview(artificialFlashLight)
+                /** Set the screen's brightness to max to give off maximum luminosity*/
+                UIScreen.main.brightness = CGFloat(1)
+            }
+        case false:
+            if currentCamera?.position == .back{
+            do{
+                try currentCamera?.lockForConfiguration()
+                currentCamera?.torchMode = .off
+                currentCamera?.unlockForConfiguration()
+            }
+            catch{
+                print("ERROR: Torch could not be used")
+            }
+            }
+        }
+        
+        /** Delay the photo capture a bit to allow the flashlight to be turned on*/
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25){[self] in
+            let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+            stillImageOutput.capturePhoto(with: settings, delegate: self)
+        }
+        
+        /** Turn off the flash light*/
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
+            if currentCamera?.position == .back{
+            do{
+                try currentCamera?.lockForConfiguration()
+                currentCamera?.torchMode = .off
+                currentCamera?.unlockForConfiguration()
+            }
+            catch{
+                print("ERROR: Torch could not be used")
+            }
+            toggleTorch()
+            }
+            else if currentCamera?.position == .front{
+                /** remove the bright view and restore the user's brightness level to the original value it was at*/
+                artificialFlashLight.removeFromSuperview()
+                UIScreen.main.brightness = originalBrightness
+            }
+        }
+    }
+    
+    /** Generate a bright view to give light to the front facing camera*/
+    func artificialFlash()->UIView{
+        let brightView = UIView(frame: CGRect(x: 0, y: 0, width: view.frame.width, height: view.frame.height))
+        brightView.backgroundColor = UIColor.white
+        return brightView
     }
     
     
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         
         guard let imageData = photo.fileDataRepresentation()
-            else { return }
+        else { return }
         
         let image = UIImage(data: imageData)
         let imageView = UIImageView()
@@ -175,6 +270,167 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         
         view.addSubview(imageView)
     }
+    
+    /** Simply add a UI gesture recognizer that recognizes single taps on the screen to this view controller's view*/
+    func addSingleTapGesture(){
+        let singleTap = UITapGestureRecognizer(target: self, action: #selector(viewSingleTapped))
+        singleTap.numberOfTapsRequired = 1
+        singleTap.numberOfTouchesRequired = 1
+        view.isExclusiveTouch = true
+        view.addGestureRecognizer(singleTap)
+    }
+    
+    /** Handler for recognizing when the user taps the view one time*/
+    @objc func viewSingleTapped(sender: UITapGestureRecognizer){
+        hapticFeedBack(FeedbackStyle: .soft)
+        
+        /** Snapchat esque circular fade in fade out animation signals where the user has tapped*/
+        let circleView = UIView(frame: CGRect(x: sender.location(in: view).x, y: sender.location(in: view).y, width: view.frame.width * 0.05, height: view.frame.width * 0.05))
+        circleView.layer.cornerRadius = circleView.frame.height/2
+        circleView.layer.borderWidth = 0.5
+        circleView.layer.borderColor = appThemeColor.cgColor
+        circleView.backgroundColor = UIColor.clear
+        circleView.clipsToBounds = true
+        circleView.transform = CGAffineTransform(scaleX: 0, y: 0)
+        
+        let inscribedCircleView = UIView(frame: CGRect(x: 0, y: 0, width: view.frame.width * 0.05, height: view.frame.width * 0.05))
+        inscribedCircleView.layer.cornerRadius = inscribedCircleView.frame.height/2
+        inscribedCircleView.backgroundColor = UIColor.white.withAlphaComponent(0.5)
+        inscribedCircleView.transform = CGAffineTransform(scaleX: 0, y: 0)
+        circleView.addSubview(inscribedCircleView)
+        
+        view.addSubview(circleView)
+        
+        UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            circleView.transform = CGAffineTransform(scaleX: 2, y: 2)
+        }
+        UIView.animate(withDuration: 0.5, delay: 0.1, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            inscribedCircleView.transform = CGAffineTransform(scaleX: 1, y: 1)
+        }
+        UIView.animate(withDuration: 0.5, delay: 0.4, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            circleView.transform = CGAffineTransform(scaleX: 1.5, y: 1.5)
+            inscribedCircleView.transform = CGAffineTransform(scaleX: 1.5, y: 1.5)
+        }
+        UIView.animate(withDuration: 0.5, delay: 0.6, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            inscribedCircleView.alpha = 0
+        }
+        UIView.animate(withDuration: 0.5, delay: 0.7, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            circleView.alpha = 0
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1){
+            circleView.removeFromSuperview()
+        }
+    }
+    
+    /** Simply add a UI gesture recognizer that recognizes double taps on the screen to this view controller's view*/
+    func addDoubleTapGesture(){
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(viewDoubleTapped))
+        doubleTap.numberOfTapsRequired = 2
+        doubleTap.numberOfTouchesRequired = 1
+        view.isExclusiveTouch = true
+        view.addGestureRecognizer(doubleTap)
+    }
+    
+    /** Handler for recognizing when the user taps the view two times in a row*/
+    @objc func viewDoubleTapped(sender: UITapGestureRecognizer){
+        hapticFeedBack(FeedbackStyle: .rigid)
+        sender.isEnabled = false
+        
+        switch currentCamera?.position{
+        case .front:
+            currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)!
+            setCameraView()
+            updateCaptureSession()
+        case .back:
+            currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)!
+            setCameraView()
+            updateCaptureSession()
+        default:
+            break
+        }
+        
+        /** Delay the pressing of this button, if the user pressed this in rapid sucession they'll block the UI and interrupt the global queue*/
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){
+            sender.isEnabled = true
+        }
+    }
+    
+    /** Handler for the switch camera button that triggers the same camera switching operations as the double tap interaction*/
+    @objc func switchCameraButtonPressed(sender: UIButton){
+        sender.isEnabled = false
+        
+        hapticFeedBack(FeedbackStyle: .rigid)
+        
+        UIView.animate(withDuration: 1, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){
+            sender.transform = CGAffineTransform(rotationAngle: .pi)
+        }
+        /** sets the transform to the identity matrix of itself, which inverts the previous transform and allows the transform above to repeat infinitely, essentially resetting the process via linear algebra*/
+        sender.transform = .identity
+        
+        switch currentCamera?.position{
+        case .front:
+            currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)!
+            setCameraView()
+            updateCaptureSession()
+        case .back:
+            currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)!
+            setCameraView()
+            updateCaptureSession()
+        default:
+            break
+        }
+        
+        /** Delay the pressing of this button, if the user pressed this in rapid sucession they'll block the UI and interrupt the global queue*/
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5){
+            sender.isEnabled = true
+        }
+    }
+    
+    /** Update the session of the video preview layer and start running that new capture session*/
+    func updateCaptureSession(){
+        videoPreviewLayer.session = captureSession
+        /** Throw this into the global queue to prevent the UI from freezing up(being blocked)*/
+        DispatchQueue.global(qos: .userInitiated).async{[self] in
+            captureSession.startRunning()
+        }
+    }
+    
+    /** Handler for touch down event on the flash light button, toggles the torch setting of the current capture device*/
+    @objc func flashLightButtonPressed(sender: UIButton){
+        hapticFeedBack(FeedbackStyle: .medium)
+        toggleTorch()
+    }
+    
+    /** Toggle the flash light bool from true to false to enable the flash light usage when taking a photo*/
+    func toggleTorch() {
+        guard currentCamera != nil else {return}
+        
+        if currentCamera?.hasTorch == false{
+            print("ERROR: Torch is not available for current device")
+        }
+        
+        /** Switch the flashlighton bool and animate the button's image changing and scaling up and down*/
+        if flashLightOn == true{
+            flashLightOn = false
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){ [self] in
+                flashLightButton.transform = CGAffineTransform(scaleX: 1.25, y: 1.25)
+            flashLightButton.setImage(UIImage(systemName: "bolt.slash.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+            }
+            UIView.animate(withDuration: 0.15, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){ [self] in
+                flashLightButton.transform = CGAffineTransform(scaleX: 1, y: 1)
+            }
+        }
+        else if flashLightOn == false{
+            flashLightOn = true
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){ [self] in
+                flashLightButton.transform = CGAffineTransform(scaleX: 1.5, y: 1.5)
+            flashLightButton.setImage(UIImage(systemName: "bolt.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+            }
+            UIView.animate(withDuration: 0.15, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){ [self] in
+                flashLightButton.transform = CGAffineTransform(scaleX: 1, y: 1)
+            }
+        }
+    }
     //Logic for viewing capturing and processing images
     
     /** Basic styling for the current view presented by this view controller class*/
@@ -182,6 +438,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         //self.view.backgroundColor = backgroundColor
     }
     
+    //Constructor Methods for top and bottom navigation buttons
     /** Create Top navigation buttons*/
     func setTopNavButtons(){
         topButtonSize = view.frame.width/4 - view.frame.width * 0.12
@@ -207,6 +464,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         myProfileButton.imageEdgeInsets = UIEdgeInsets(top: myProfileButton.frame.height * 0.25, left: myProfileButton.frame.height * 0.25, bottom: myProfileButton.frame.height * 0.25, right: myProfileButton.frame.height * 0.25)
         myProfileButton.backgroundColor = appThemeColor
         myProfileButton.isExclusiveTouch = true
+        myProfileButton.addTarget(self, action: #selector(topNavButtonPressed), for: .touchDown)
         
         settingsButton = UIButton(frame: CGRect(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4, width: topButtonSize, height: topButtonSize))
         settingsButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -221,12 +479,21 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         settingsButton.imageEdgeInsets = UIEdgeInsets(top: settingsButton.frame.height * 0.25, left: settingsButton.frame.height * 0.25, bottom: settingsButton.frame.height * 0.25, right: settingsButton.frame.height * 0.25)
         settingsButton.backgroundColor = appThemeColor
         settingsButton.isExclusiveTouch = true
+        settingsButton.addTarget(self, action: #selector(topNavButtonPressed), for: .touchDown)
         
         topNavButtons.append(myProfileButton)
         topNavButtons.append(settingsButton)
         
         view.addSubview(myProfileButton)
         view.addSubview(settingsButton)
+        
+        /** Give the UI time to update before animating*/
+        DispatchQueue.main.async { [self] in
+            hideTopNavButtons(animated: false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1){ [self] in
+            showTopNavButtons(animated: true)
+        }
     }
     
     /**Create navigation buttons*/
@@ -317,6 +584,17 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         flashLightButton.imageEdgeInsets = UIEdgeInsets(top: flashLightButton.frame.height * 0.2, left: flashLightButton.frame.height * 0.2, bottom: flashLightButton.frame.height * 0.2, right: flashLightButton.frame.height * 0.2)
         flashLightButton.backgroundColor = UIColor.clear
         flashLightButton.isExclusiveTouch = true
+        flashLightButton.addTarget(self, action: #selector(flashLightButtonPressed), for: .touchDown)
+        
+        switchCameraButton = UIButton(frame: CGRect(x: view.frame.midX - bottomButtonSize/2, y: importButton.frame.minY - (bottomButtonSize * 1), width: bottomButtonSize, height: bottomButtonSize))
+        switchCameraButton.setImage(UIImage(systemName: "arrow.triangle.2.circlepath", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+        switchCameraButton.tintColor = UIColor.white
+        switchCameraButton.imageView?.contentMode = .scaleAspectFit
+        switchCameraButton.contentHorizontalAlignment = .center
+        switchCameraButton.imageEdgeInsets = UIEdgeInsets(top: switchCameraButton.frame.height * 0.2, left: switchCameraButton.frame.height * 0.2, bottom: switchCameraButton.frame.height * 0.2, right: switchCameraButton.frame.height * 0.2)
+        switchCameraButton.backgroundColor = UIColor.clear
+        switchCameraButton.isExclusiveTouch = true
+        switchCameraButton.addTarget(self, action: #selector(switchCameraButtonPressed), for: .touchDown)
         
         capturePictureButton = UIButton(frame: CGRect(x: view.frame.midX - bottomButtonSize/2, y: flashLightButton.frame.minY - (bottomButtonSize), width: (bottomButtonSize), height: (bottomButtonSize)))
         capturePictureButton.setImage(UIImage(systemName: "circle", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -348,11 +626,12 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         bottomNavButtons.append(textToSpeechButton)
         bottomNavButtons.append(transcribeSpeechBubbleButton)
         
+        switchCameraButton.frame.origin.y = capturePictureButton.frame.minY - switchCameraButton.frame.height
+        
         /** Give the UI time to update before animating*/
         DispatchQueue.main.async{[self] in
-            hideNavButtons(animated: false)
-            showNavButtons(animated: true)
-            
+            hideBottomNavButtons(animated: false)
+            showBottomNavButtons(animated: true)
             hideCaptureButtons(animated: false)
         }
         
@@ -366,11 +645,87 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         view.addSubview(pastHistoryButton)
         view.addSubview(transcribeSpeechBubbleButton)
         view.addSubview(flashLightButton)
+        view.addSubview(switchCameraButton)
         
         view.addSubview(radialBorder1)
         view.addSubview(radialBorder2)
         view.addSubview(radialBorder3)
         view.addSubview(capturePictureButton)
+    }
+    //Constructor Methods for top and bottom navigation buttons
+    
+    //Top and Bottom Navigational Buttons Logic
+    /** Action handler for  touch down events on the top navigation buttons*/
+    @objc func topNavButtonPressed(sender: UIButton){
+        /** Give the user a nice touch based reward for tapping the button*/
+        hapticFeedBack(FeedbackStyle: .rigid)
+        
+        /** Prevent the user from triggering the button in rapid succession*/
+        sender.isEnabled = false
+        
+        /** Make the view slightly transparent and scale it down followed by immediately undoing said transforms and alpha changes*/
+        UIView.animate(withDuration: 0.25, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            sender.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+        }
+        UIView.animate(withDuration: 0.25, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            sender.transform = CGAffineTransform(scaleX: 1, y: 1)
+        }
+        UIView.animate(withDuration: 0.25){
+            sender.alpha = 0.9
+        }
+        UIView.animate(withDuration: 0.25, delay: 0.25){
+            sender.alpha = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){
+            sender.isEnabled = true
+        }
+        
+        switch sender.tag{
+        /** My Profile Button*/
+        case 0:
+            let myProfileVC = MyProfileViewController()
+            
+            /** Make the view controller's view the same shape as the button*/
+            myProfileVC.view.frame = sender.frame
+            myProfileVC.view.layer.cornerRadius = sender.layer.cornerRadius
+            
+            /**Add this view above all of the others including nav bars*/
+            UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(myProfileVC.view)/**Add this view above all of the others including nav bars*/
+            
+            /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                myProfileVC.view.frame.origin = CGPoint(x: view.frame.width/2 - myProfileVC.view.frame.width/2, y: view.frame.height/2 - myProfileVC.view.frame.height/2)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                myProfileVC.view.frame = view.frame
+                myProfileVC.view.frame.size.height = view.frame.height * 0.9
+                myProfileVC.view.frame.size.width = view.frame.width * 0.9
+                myProfileVC.view.frame.origin = CGPoint(x: view.frame.width/2 - myProfileVC.view.frame.width/2, y: view.frame.height/2 - myProfileVC.view.frame.height/2)
+            }
+        /** Settings Button*/
+        case 1:
+            let settingsVC = SettingsViewController()
+            
+            /** Make the view controller's view the same shape as the button*/
+            settingsVC.view.frame = sender.frame
+            settingsVC.view.layer.cornerRadius = sender.layer.cornerRadius
+            
+            /**Add this view above all of the others including nav bars*/
+            UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(settingsVC.view)/**Add this view above all of the others including nav bars*/
+            
+            /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                settingsVC.view.frame.origin = CGPoint(x: view.frame.width/2 - settingsVC.view.frame.width/2, y: view.frame.height/2 - settingsVC.view.frame.height/2)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                settingsVC.view.frame = view.frame
+                settingsVC.view.frame.size.height = view.frame.height * 0.9
+                settingsVC.view.frame.size.width = view.frame.width * 0.9
+                settingsVC.view.frame.origin = CGPoint(x: view.frame.width/2 - settingsVC.view.frame.width/2, y: view.frame.height/2 - settingsVC.view.frame.height/2)
+            }
+        default:
+            return
+        }
     }
     
     /** Action handler for  touch down events on the bottom navigation buttons*/
@@ -395,19 +750,36 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             sender.alpha = 1
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){
-        sender.isEnabled = true
+            sender.isEnabled = true
         }
         
         switch sender.tag{
         /** Import Button*/
         case 0:
-            break
+            let importVC = ImageProcessingViewController()
+            
+            /** Make the view controller's view the same shape as the button*/
+            importVC.view.frame = sender.frame
+            importVC.view.layer.cornerRadius = sender.layer.cornerRadius
+            
+            /**Add this view above all of the others including nav bars*/
+            UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(importVC.view)/**Add this view above all of the others including nav bars*/
+            
+            /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                importVC.view.frame.origin = CGPoint(x: view.frame.width/2 - importVC.view.frame.width/2, y: view.frame.height/2 - importVC.view.frame.height/2)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                importVC.view.frame = view.frame
+                importVC.view.frame.size.height = view.frame.height * 0.9
+                importVC.view.frame.size.width = view.frame.width * 0.9
+                importVC.view.frame.origin = CGPoint(x: view.frame.width/2 - importVC.view.frame.width/2, y: view.frame.height/2 - importVC.view.frame.height/2)
+            }
         /** Text To Speech Button*/
         case 1:
             break
         /** Past History Button triggers a custom segue*/
         case 2:
-            //self.navigationController?.pushViewController(PastHistoryViewController(), animated: true)
             let pastHistoryVC = PastHistoryViewController()
             
             /** Make the view controller's view the same shape as the button*/
@@ -425,7 +797,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
                 pastHistoryVC.view.frame = view.frame
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
-            navigationController?.pushViewController(pastHistoryVC, animated: false)
+                navigationController?.pushViewController(pastHistoryVC, animated: false)
             }
             
         /** Transcribe Speech Bubble Button*/
@@ -442,6 +814,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         case true:
             UIView.animate(withDuration: 1){[self] in
                 flashLightButton.alpha = 1
+                switchCameraButton.alpha = 1
             }
             UIView.animate(withDuration: 0.25, delay: 0){[self] in
                 radialBorder1.alpha =  1
@@ -453,9 +826,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             }
         case false:
             flashLightButton.alpha = 1
-            
+            switchCameraButton.alpha = 1
             capturePictureButton.transform = CGAffineTransform(scaleX: 1, y: 1)
-            
             radialBorder1.alpha =  1
             radialBorder2.alpha = 1
             radialBorder3.alpha = 1
@@ -468,6 +840,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         case true:
             UIView.animate(withDuration: 1){[self] in
                 flashLightButton.alpha = 0
+                switchCameraButton.alpha = 0
             }
             UIView.animate(withDuration: 0.25, delay: 0){[self] in
                 radialBorder1.alpha =  0
@@ -479,72 +852,120 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             }
         case false:
             flashLightButton.alpha = 0
-            
+            switchCameraButton.alpha = 0
             capturePictureButton.transform = CGAffineTransform(scaleX: 0, y: 0)
-            
             radialBorder1.alpha =  0
             radialBorder2.alpha = 0
             radialBorder3.alpha = 0
         }
     }
     
-    /** Hide navigation buttons in a static or animated manner*/
-    func hideNavButtons(animated: Bool){
+    /** Hide bottom navigation buttons in a static or animated manner*/
+    func hideBottomNavButtons(animated: Bool){
         switch animated {
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[0].frame.origin = CGPoint(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY + bottomButtonSize * 5)
             }
-            
             UIView.animate(withDuration: 0.5, delay: 0.2, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - bottomButtonSize, y: view.frame.maxY + bottomButtonSize * 5)
             }
-            
             UIView.animate(withDuration: 0.5, delay: 0.4, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 10, y: view.frame.maxY + bottomButtonSize * 5)
             }
-            
             UIView.animate(withDuration: 0.5, delay: 0.6, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY + bottomButtonSize * 5)
             }
+            bottomNavButtons[0].isEnabled = false
+            bottomNavButtons[1].isEnabled = false
+            bottomNavButtons[2].isEnabled = false
+            bottomNavButtons[3].isEnabled = false
         case false:
             bottomNavButtons[0].frame.origin = CGPoint(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY + bottomButtonSize * 5)
-            
             bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - bottomButtonSize, y: view.frame.maxY + bottomButtonSize * 5)
-            
             bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 10, y: view.frame.maxY + bottomButtonSize * 5)
-            
             bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY + bottomButtonSize * 5)
+            
+            bottomNavButtons[0].isEnabled = false
+            bottomNavButtons[1].isEnabled = false
+            bottomNavButtons[2].isEnabled = false
+            bottomNavButtons[3].isEnabled = false
         }
     }
     
-    /** Display navigation buttons in a static or animated manner*/
-    func showNavButtons(animated: Bool){
+    /** Display bottom navigation buttons in a static or animated manner*/
+    func showBottomNavButtons(animated: Bool){
         switch animated {
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[0].frame.origin = CGPoint(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY - bottomButtonSize * 1.5)
             }
-            
             UIView.animate(withDuration: 0.5, delay: 0.2, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - bottomButtonSize, y: view.frame.maxY - bottomButtonSize * 1.5)
             }
-            
             UIView.animate(withDuration: 0.5, delay: 0.4, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 10, y: view.frame.maxY - bottomButtonSize * 1.5)
             }
-            
             UIView.animate(withDuration: 0.5, delay: 0.6, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY - bottomButtonSize * 1.5)
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
+                bottomNavButtons[0].isEnabled = true
+                bottomNavButtons[1].isEnabled = true
+                bottomNavButtons[2].isEnabled = true
+                bottomNavButtons[3].isEnabled = true
+            }
         case false:
             bottomNavButtons[0].frame.origin = CGPoint(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY - bottomButtonSize * 1.5)
-            
             bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - bottomButtonSize, y: view.frame.maxY - bottomButtonSize * 1.5)
-            
             bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 10, y: view.frame.maxY - bottomButtonSize * 1.5)
-            
             bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY - bottomButtonSize * 1.5)
+            bottomNavButtons[0].isEnabled = true
+            bottomNavButtons[1].isEnabled = true
+            bottomNavButtons[2].isEnabled = true
+            bottomNavButtons[3].isEnabled = true
+        }
+    }
+    
+    /** Hide top navigation buttons in a static or animated manner*/
+    func hideTopNavButtons(animated: Bool){
+        switch animated{
+        case true:
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX - topButtonSize * 2, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            }
+            topNavButtons[0].isEnabled = false
+            topNavButtons[1].isEnabled = false
+        case false:
+            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX - topButtonSize * 2, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            topNavButtons[0].isEnabled = false
+            topNavButtons[1].isEnabled = false
+        }
+    }
+    
+    /** Display top navigation buttons in a static or animated manner*/
+    func showTopNavButtons(animated: Bool){
+        switch animated{
+        case true:
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX + topButtonSize/4, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
+                topNavButtons[0].isEnabled = true
+                topNavButtons[1].isEnabled = true
+            }
+        case false:
+            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX + topButtonSize/4, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            topNavButtons[0].isEnabled = true
+            topNavButtons[1].isEnabled = true
         }
     }
     
@@ -562,7 +983,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             capturePictureButton.transform = CGAffineTransform(scaleX: 1, y: 1)
         }
     }
-
+    
     /** Animate the circular views around the caputre button and the capture button itself scaling up and down*/
     func animateCaptureButton(){
         UIView.animate(withDuration: 1.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 10, options: [.curveEaseIn, .repeat, .autoreverse,  .allowUserInteraction]){[self] in
@@ -576,6 +997,6 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             radialBorder1.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
         }
     }
-    
+    //Top and Bottom Navigational Buttons Logic
 }
 
