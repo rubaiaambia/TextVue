@@ -4,8 +4,7 @@
 //
 //  Created by Rubaia Ambia on 3/14/21.
 //
-/** -   Description: TextVue is an app that allows you to parse all kinds of texts from your environment whether live, still, or imported from your camera roll. Using advanced text recognition API and AI denoising techniques TextVue can see even when there's nothing to see, and with the
- power of augmented reality, discovering the world around you grabbing text to use in other application with the tap of a finger never seemed so easy. Welcome home to innovation, where we all should be.
+/** -   Description: TextVue is an app that allows you to parse all kinds of texts from your environment. Whether your content is live, still, or imported from your camera roll, bysing advanced text recognition API and AI denoising techniques TextVue can see even when there's nothing to see, and with the power of augmented reality, discovering the world around you and grabbing text to use in other applications with the tap of a finger never seemed so easy. Welcome home to innovation, where we all should be.
  - Authors: Rubaia Ambia, Justin Cook*/
 
 /**Necessary libraries for the API necessary to make this application possible*/
@@ -29,8 +28,6 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     var transcribeSpeechBubbleButton = UIButton()
     /**Flash Light Button*/
     var flashLightButton = UIButton()
-    /**Bool that controls device torch*/
-    var flashLightOn = false
     /**A bright UIView that increases the brightness of the environment when the user wants to take a front facing photo with torch options on*/
     lazy var artificialFlashLight:UIView = artificialFlash()
     /**Switch Camera Button*/
@@ -57,12 +54,40 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     /**Capture Session variables*/
     var captureSession: AVCaptureSession!
+    /**Static Photo output by the capture session*/
     var stillImageOutput: AVCapturePhotoOutput!
-    var videoPreviewLayer: AVCaptureVideoPreviewLayer!
-    lazy var currentCamera: AVCaptureDevice? = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)!
+    /**Video preview of what the camera currently sees*/
+    var videoPreviewLayer: AVCaptureVideoPreviewLayer = AVCaptureVideoPreviewLayer()
+    /**Prevent multiple video preview layers from being painted on top of one another when switching between cameras*/
+    var videoPreviewLayerActive = false
+    /**The current device responsible for the input of the capture session*/
+    lazy var currentCamera: AVCaptureDevice? = getCamera()
     
     /**Blurred UIView that can overlayed ontop of another view as a subview*/
     lazy var blurredView = getBlurredView()
+    /**Specify if a view is being presented, if it is then the blurred view is already added to the main screen*/
+    var isTransientViewBeingPresented = false
+    
+    /**Get the camera device that will be used for the capture session*/
+    func getCamera()->AVCaptureDevice?{
+        loadCameraPreferences()
+        switch useBackCamera{
+        case true:
+            if let captureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back){
+                return captureDevice
+            }
+            else{
+                return nil
+            }
+        case false:
+            if let captureDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front){
+                return captureDevice
+            }
+            else{
+                return nil
+            }
+        }
+    }
     
     /** Detect if the user interfaxe style has changed when the trait collection is altered either by device orientation changes or appearance changes to name a few*/
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -76,29 +101,36 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     /**Activated when the view’s content is first painted to the screen*/
     override func viewWillAppear(_ animated: Bool){
-        blurredView.removeFromSuperview()
-        loadDarkModePreference()
-        presetCameraPreview()
-        configureThisView()
+        loadUserPreferences()
+        if isTransientViewBeingPresented == false{
+            blurredView.removeFromSuperview()
+        }
     }
     
-    override func viewWillDisappear(_ animated: Bool) {
+    override func viewWillDisappear(_ animated: Bool){
+        saveUserPreferences()
     }
     
     @objc func appMovedToBackground(){
-        view.addSubview(blurredView)
+        if isTransientViewBeingPresented == false{
+            view.addSubview(blurredView)
+        }
         captureSession.stopRunning()
     }
     
     @objc func appMovedToForeground(){
-        blurredView.removeFromSuperview()
+        if isTransientViewBeingPresented == false{
+            blurredView.removeFromSuperview()
+        }
         removeCaptureButtonAnimations()
         animateCaptureButton()
     }
     
     /** Activates when the application regains focus*/
     @objc func appDidBecomeActive(){
-        blurredView.removeFromSuperview()
+        if isTransientViewBeingPresented == false{
+            blurredView.removeFromSuperview()
+        }
         captureSession.startRunning()
     }
     
@@ -146,8 +178,9 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             if captureSession.canAddInput(input) && captureSession.canAddOutput(stillImageOutput) {
                 captureSession.addInput(input)
                 captureSession.addOutput(stillImageOutput)
-                if(videoPreviewLayer == nil){
+                if(videoPreviewLayerActive == false){
                     setupLivePreview()
+                    videoPreviewLayerActive = true
                 }
             }
         }
@@ -156,14 +189,12 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
-    /** Set the frame of the camera preview to that of the view's frame to prevent this resizing from */
-    func presetCameraPreview(){
-        videoPreviewLayer.frame = view.frame
-    }
-    
     /** Create a video preview that corresponds to the dimensions of the user's device*/
     func setupLivePreview() {
         videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
+        
+        /** Set the frame of the camera preview to that of the view's frame to prevent this resizing from */
+        videoPreviewLayer.frame = view.frame
         
         videoPreviewLayer.videoGravity = .resizeAspectFill
         videoPreviewLayer.connection?.videoOrientation = .portrait
@@ -211,14 +242,14 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             }
         case false:
             if currentCamera?.position == .back{
-            do{
-                try currentCamera?.lockForConfiguration()
-                currentCamera?.torchMode = .off
-                currentCamera?.unlockForConfiguration()
-            }
-            catch{
-                print("ERROR: Torch could not be used")
-            }
+                do{
+                    try currentCamera?.lockForConfiguration()
+                    currentCamera?.torchMode = .off
+                    currentCamera?.unlockForConfiguration()
+                }
+                catch{
+                    print("ERROR: Torch could not be used")
+                }
             }
         }
         
@@ -231,15 +262,14 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         /** Turn off the flash light*/
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
             if currentCamera?.position == .back{
-            do{
-                try currentCamera?.lockForConfiguration()
-                currentCamera?.torchMode = .off
-                currentCamera?.unlockForConfiguration()
-            }
-            catch{
-                print("ERROR: Torch could not be used")
-            }
-            toggleTorch()
+                do{
+                    try currentCamera?.lockForConfiguration()
+                    currentCamera?.torchMode = .off
+                    currentCamera?.unlockForConfiguration()
+                }
+                catch{
+                    print("ERROR: Torch could not be used")
+                }
             }
             else if currentCamera?.position == .front{
                 /** remove the bright view and restore the user's brightness level to the original value it was at*/
@@ -256,11 +286,9 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         return brightView
     }
     
-    
+    /** Method gets the image data from the capture event and then parses this into a usable UIImage object*/
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        
-        guard let imageData = photo.fileDataRepresentation()
-        else { return }
+        guard let imageData = photo.fileDataRepresentation()else { return }
         
         let image = UIImage(data: imageData)
         let imageView = UIImageView()
@@ -269,6 +297,46 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         imageView.contentMode = .scaleAspectFill
         
         view.addSubview(imageView)
+        
+        processImage(image: image!)
+    }
+    
+    /** Process the UIImage with apple's text recognition API and print this text out to the console
+     - Parameters:
+     - image: The image being fed to the text recognition API
+     - Author: Rubaia A.
+     */
+    func processImage(image: UIImage){
+        
+        /**[WRITE YOUR CODE HERE]*/
+        
+        
+        /**
+        /**Make a view controller that will display the image alongside the parsed text recieved from the text recognition API*/
+        let imageProcessingVC = ImageProcessingViewController()
+        imageProcessingVC.presentingVC = self
+        
+        /** Make the view controller's view the same shape as the button*/
+        imageProcessingVC.view.frame = capturePictureButton.frame
+        imageProcessingVC.view.layer.cornerRadius = capturePictureButton.layer.cornerRadius
+        
+        /**Add this view above all of the others including nav bars*/
+        UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(imageProcessingVC.view)
+        
+        /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
+        UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+            imageProcessingVC.view.frame.origin = CGPoint(x: view.frame.width/2 - imageProcessingVC.view.frame.width/2, y: view.frame.height/2 - imageProcessingVC.view.frame.height/2)
+        }
+        UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+            imageProcessingVC.view.frame = view.frame
+            imageProcessingVC.view.frame.size.height = view.frame.height
+            imageProcessingVC.view.frame.size.width = view.frame.width
+            imageProcessingVC.view.frame.origin = CGPoint(x: view.frame.width/2 - imageProcessingVC.view.frame.width/2, y: view.frame.height/2 - imageProcessingVC.view.frame.height/2)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
+            navigationController?.pushViewController(imageProcessingVC, animated: false)
+        }
+        */
     }
     
     /** Simply add a UI gesture recognizer that recognizes single taps on the screen to this view controller's view*/
@@ -282,43 +350,45 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     /** Handler for recognizing when the user taps the view one time*/
     @objc func viewSingleTapped(sender: UITapGestureRecognizer){
-        hapticFeedBack(FeedbackStyle: .soft)
-        
-        /** Snapchat esque circular fade in fade out animation signals where the user has tapped*/
-        let circleView = UIView(frame: CGRect(x: sender.location(in: view).x, y: sender.location(in: view).y, width: view.frame.width * 0.05, height: view.frame.width * 0.05))
-        circleView.layer.cornerRadius = circleView.frame.height/2
-        circleView.layer.borderWidth = 0.5
-        circleView.layer.borderColor = appThemeColor.cgColor
-        circleView.backgroundColor = UIColor.clear
-        circleView.clipsToBounds = true
-        circleView.transform = CGAffineTransform(scaleX: 0, y: 0)
-        
-        let inscribedCircleView = UIView(frame: CGRect(x: 0, y: 0, width: view.frame.width * 0.05, height: view.frame.width * 0.05))
-        inscribedCircleView.layer.cornerRadius = inscribedCircleView.frame.height/2
-        inscribedCircleView.backgroundColor = UIColor.white.withAlphaComponent(0.5)
-        inscribedCircleView.transform = CGAffineTransform(scaleX: 0, y: 0)
-        circleView.addSubview(inscribedCircleView)
-        
-        view.addSubview(circleView)
-        
-        UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
-            circleView.transform = CGAffineTransform(scaleX: 2, y: 2)
-        }
-        UIView.animate(withDuration: 0.5, delay: 0.1, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
-            inscribedCircleView.transform = CGAffineTransform(scaleX: 1, y: 1)
-        }
-        UIView.animate(withDuration: 0.5, delay: 0.4, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
-            circleView.transform = CGAffineTransform(scaleX: 1.5, y: 1.5)
-            inscribedCircleView.transform = CGAffineTransform(scaleX: 1.5, y: 1.5)
-        }
-        UIView.animate(withDuration: 0.5, delay: 0.6, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
-            inscribedCircleView.alpha = 0
-        }
-        UIView.animate(withDuration: 0.5, delay: 0.7, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
-            circleView.alpha = 0
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1){
-            circleView.removeFromSuperview()
+        if(videoPreviewLayer.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true && isTransientViewBeingPresented == false){
+            hapticFeedBack(FeedbackStyle: .soft)
+            
+            /** Snapchat esque circular fade in fade out animation signals where the user has tapped*/
+            let circleView = UIView(frame: CGRect(x: sender.location(in: view).x, y: sender.location(in: view).y, width: view.frame.width * 0.05, height: view.frame.width * 0.05))
+            circleView.layer.cornerRadius = circleView.frame.height/2
+            circleView.layer.borderWidth = 0.5
+            circleView.layer.borderColor = appThemeColor.cgColor
+            circleView.backgroundColor = UIColor.clear
+            circleView.clipsToBounds = true
+            circleView.transform = CGAffineTransform(scaleX: 0, y: 0)
+            
+            let inscribedCircleView = UIView(frame: CGRect(x: 0, y: 0, width: view.frame.width * 0.05, height: view.frame.width * 0.05))
+            inscribedCircleView.layer.cornerRadius = inscribedCircleView.frame.height/2
+            inscribedCircleView.backgroundColor = UIColor.white.withAlphaComponent(0.5)
+            inscribedCircleView.transform = CGAffineTransform(scaleX: 0, y: 0)
+            circleView.addSubview(inscribedCircleView)
+            
+            view.addSubview(circleView)
+            
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+                circleView.transform = CGAffineTransform(scaleX: 2, y: 2)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.1, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+                inscribedCircleView.transform = CGAffineTransform(scaleX: 1, y: 1)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.4, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+                circleView.transform = CGAffineTransform(scaleX: 1.5, y: 1.5)
+                inscribedCircleView.transform = CGAffineTransform(scaleX: 1.5, y: 1.5)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.6, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+                inscribedCircleView.alpha = 0
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.7, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+                circleView.alpha = 0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1){
+                circleView.removeFromSuperview()
+            }
         }
     }
     
@@ -333,56 +403,51 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     /** Handler for recognizing when the user taps the view two times in a row*/
     @objc func viewDoubleTapped(sender: UITapGestureRecognizer){
-        hapticFeedBack(FeedbackStyle: .rigid)
         sender.isEnabled = false
         
-        switch currentCamera?.position{
-        case .front:
-            currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)!
-            setCameraView()
-            updateCaptureSession()
-        case .back:
-            currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)!
-            setCameraView()
-            updateCaptureSession()
-        default:
-            break
+        /** Delay the pressing of this button, if the user pressed this in rapid sucession they'll block the UI and interrupt the global queue*/
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1){
+            sender.isEnabled = true
         }
         
-        /** Delay the pressing of this button, if the user pressed this in rapid sucession they'll block the UI and interrupt the global queue*/
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){
-            sender.isEnabled = true
+        /**Prevent a camera switch from being triggered while a transient view is being presented and the switch camera button is being used, also only register touches inside of the video preview layer and not inside of the switch camera button under any circumstances*/
+        if(videoPreviewLayer.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true && isTransientViewBeingPresented == false){
+            hapticFeedBack(FeedbackStyle: .rigid)
+            
+            /** Animate this button since it does the same operation as the double tap gesture*/
+            switchCameraButtonPressed(sender: switchCameraButton)
         }
     }
     
     /** Handler for the switch camera button that triggers the same camera switching operations as the double tap interaction*/
     @objc func switchCameraButtonPressed(sender: UIButton){
         sender.isEnabled = false
-        
-        hapticFeedBack(FeedbackStyle: .rigid)
+        /** Delay the pressing of this button, if the user pressed this in rapid sucession they'll block the UI and interrupt the global queue*/
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1){
+            sender.isEnabled = true
+        }
         
         UIView.animate(withDuration: 1, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){
             sender.transform = CGAffineTransform(rotationAngle: .pi)
         }
+        
         /** sets the transform to the identity matrix of itself, which inverts the previous transform and allows the transform above to repeat infinitely, essentially resetting the process via linear algebra*/
         sender.transform = .identity
         
+        hapticFeedBack(FeedbackStyle: .rigid)
         switch currentCamera?.position{
         case .front:
+            useBackCamera = true
             currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)!
             setCameraView()
             updateCaptureSession()
         case .back:
+            useBackCamera = false
             currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)!
             setCameraView()
             updateCaptureSession()
         default:
             break
-        }
-        
-        /** Delay the pressing of this button, if the user pressed this in rapid sucession they'll block the UI and interrupt the global queue*/
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5){
-            sender.isEnabled = true
         }
     }
     
@@ -414,7 +479,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             flashLightOn = false
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){ [self] in
                 flashLightButton.transform = CGAffineTransform(scaleX: 1.25, y: 1.25)
-            flashLightButton.setImage(UIImage(systemName: "bolt.slash.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+                flashLightButton.setImage(UIImage(systemName: "bolt.slash.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
             }
             UIView.animate(withDuration: 0.15, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){ [self] in
                 flashLightButton.transform = CGAffineTransform(scaleX: 1, y: 1)
@@ -424,7 +489,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             flashLightOn = true
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){ [self] in
                 flashLightButton.transform = CGAffineTransform(scaleX: 1.5, y: 1.5)
-            flashLightButton.setImage(UIImage(systemName: "bolt.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+                flashLightButton.setImage(UIImage(systemName: "bolt.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
             }
             UIView.animate(withDuration: 0.15, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){ [self] in
                 flashLightButton.transform = CGAffineTransform(scaleX: 1, y: 1)
@@ -433,14 +498,22 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     }
     //Logic for viewing capturing and processing images
     
-    /** Basic styling for the current view presented by this view controller class*/
-    func configureThisView(){
-        //self.view.backgroundColor = backgroundColor
+    /** Handler for the segmented control touch down events*/
+    @objc func translationSegmentedControlPressed(sender: UISegmentedControl){
+        switch sender.selectedSegmentIndex {
+        case 0:
+            translationEnabled = false
+        case 1:
+            translationEnabled = true
+        default:
+            break
+        }
     }
     
     //Constructor Methods for top and bottom navigation buttons
     /** Create Top navigation buttons*/
     func setTopNavButtons(){
+        loadTranslationPreference()
         topButtonSize = view.frame.width/4 - view.frame.width * 0.12
         
         translationSegmentedControl.selectedSegmentTintColor = UIColor.white
@@ -448,6 +521,14 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         translationSegmentedControl.setTitleTextAttributes([NSAttributedString.Key.foregroundColor: appThemeColor], for: .selected)
         translationSegmentedControl.frame.origin = CGPoint(x: view.frame.width/2 - translationSegmentedControl.frame.width/2, y: view.safeAreaInsets.top + translationSegmentedControl.frame.height)
         translationSegmentedControl.isExclusiveTouch = true
+        translationSegmentedControl.addTarget(self, action: #selector(translationSegmentedControlPressed), for: .valueChanged)
+        
+        switch translationEnabled{
+        case true:
+            translationSegmentedControl.selectedSegmentIndex = 1
+        case false:
+            translationSegmentedControl.selectedSegmentIndex = 0
+        }
         
         view.bringSubviewToFront(translationSegmentedControl)
         
@@ -465,6 +546,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         myProfileButton.backgroundColor = appThemeColor
         myProfileButton.isExclusiveTouch = true
         myProfileButton.addTarget(self, action: #selector(topNavButtonPressed), for: .touchDown)
+        myProfileButton.tag = 0
         
         settingsButton = UIButton(frame: CGRect(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4, width: topButtonSize, height: topButtonSize))
         settingsButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
@@ -480,6 +562,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         settingsButton.backgroundColor = appThemeColor
         settingsButton.isExclusiveTouch = true
         settingsButton.addTarget(self, action: #selector(topNavButtonPressed), for: .touchDown)
+        settingsButton.tag = 1
         
         topNavButtons.append(myProfileButton)
         topNavButtons.append(settingsButton)
@@ -577,7 +660,12 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         transcribeSpeechBubbleButton.isExclusiveTouch = true
         
         flashLightButton = UIButton(frame: CGRect(x: view.frame.midX - bottomButtonSize/2, y: importButton.frame.minY - (bottomButtonSize * 1), width: bottomButtonSize, height: bottomButtonSize))
-        flashLightButton.setImage(UIImage(systemName: "bolt.slash.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+        switch flashLightOn{
+        case false:
+            flashLightButton.setImage(UIImage(systemName: "bolt.slash.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+        case true:
+            flashLightButton.setImage(UIImage(systemName: "bolt.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+        }
         flashLightButton.tintColor = UIColor.white
         flashLightButton.imageView?.contentMode = .scaleAspectFit
         flashLightButton.contentHorizontalAlignment = .center
@@ -599,6 +687,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         capturePictureButton = UIButton(frame: CGRect(x: view.frame.midX - bottomButtonSize/2, y: flashLightButton.frame.minY - (bottomButtonSize), width: (bottomButtonSize), height: (bottomButtonSize)))
         capturePictureButton.setImage(UIImage(systemName: "circle", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
         capturePictureButton.tintColor = UIColor.white
+        capturePictureButton.layer.cornerRadius = capturePictureButton.frame.height/2
         capturePictureButton.imageView?.contentMode = .scaleAspectFit
         capturePictureButton.contentHorizontalAlignment = .center
         capturePictureButton.backgroundColor = UIColor.clear
@@ -683,49 +772,72 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         switch sender.tag{
         /** My Profile Button*/
         case 0:
-            let myProfileVC = MyProfileViewController()
+            let myProfileView = MyProfileView(presentingVC: self)
+            presentationInProgress()
             
             /** Make the view controller's view the same shape as the button*/
-            myProfileVC.view.frame = sender.frame
-            myProfileVC.view.layer.cornerRadius = sender.layer.cornerRadius
+            myProfileView.frame = sender.frame
+            myProfileView.layer.cornerRadius = sender.layer.cornerRadius
+            myProfileView.clipsToBounds = true
+            
+            myProfileView.setOriginalSize(frame: sender.frame)
+            myProfileView.setOriginalLocation(point: sender.frame.origin)
             
             /**Add this view above all of the others including nav bars*/
-            UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(myProfileVC.view)/**Add this view above all of the others including nav bars*/
+            UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(myProfileView)
             
             /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                myProfileVC.view.frame.origin = CGPoint(x: view.frame.width/2 - myProfileVC.view.frame.width/2, y: view.frame.height/2 - myProfileVC.view.frame.height/2)
+                myProfileView.frame.origin = CGPoint(x: view.frame.width/2 - myProfileView.frame.width/2, y: view.frame.height/2 - myProfileView.frame.height/2)
             }
             UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                myProfileVC.view.frame = view.frame
-                myProfileVC.view.frame.size.height = view.frame.height * 0.9
-                myProfileVC.view.frame.size.width = view.frame.width * 0.9
-                myProfileVC.view.frame.origin = CGPoint(x: view.frame.width/2 - myProfileVC.view.frame.width/2, y: view.frame.height/2 - myProfileVC.view.frame.height/2)
+                myProfileView.frame = view.frame
+                myProfileView.frame.size.height = view.frame.height * 0.9
+                myProfileView.frame.size.width = view.frame.width * 0.9
+                myProfileView.frame.origin = CGPoint(x: view.frame.width/2 - myProfileView.frame.width/2, y: view.frame.height/2 - myProfileView.frame.height/2)
             }
         /** Settings Button*/
         case 1:
-            let settingsVC = SettingsViewController()
+            let settingsView = SettingsView(presentingVC: self)
+            presentationInProgress()
             
             /** Make the view controller's view the same shape as the button*/
-            settingsVC.view.frame = sender.frame
-            settingsVC.view.layer.cornerRadius = sender.layer.cornerRadius
+            settingsView.frame = sender.frame
+            settingsView.layer.cornerRadius = sender.layer.cornerRadius
+            settingsView.clipsToBounds = true
+            
+            settingsView.setOriginalSize(frame: sender.frame)
+            settingsView.setOriginalLocation(point: sender.frame.origin)
             
             /**Add this view above all of the others including nav bars*/
-            UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(settingsVC.view)/**Add this view above all of the others including nav bars*/
+            UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(settingsView)
             
             /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                settingsVC.view.frame.origin = CGPoint(x: view.frame.width/2 - settingsVC.view.frame.width/2, y: view.frame.height/2 - settingsVC.view.frame.height/2)
+                settingsView.frame.origin = CGPoint(x: view.frame.width/2 - settingsView.frame.width/2, y: view.frame.height/2 - settingsView.frame.height/2)
             }
             UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                settingsVC.view.frame = view.frame
-                settingsVC.view.frame.size.height = view.frame.height * 0.9
-                settingsVC.view.frame.size.width = view.frame.width * 0.9
-                settingsVC.view.frame.origin = CGPoint(x: view.frame.width/2 - settingsVC.view.frame.width/2, y: view.frame.height/2 - settingsVC.view.frame.height/2)
+                settingsView.frame = view.frame
+                settingsView.frame.size.height = view.frame.height * 0.9
+                settingsView.frame.size.width = view.frame.width * 0.9
+                settingsView.frame.origin = CGPoint(x: view.frame.width/2 - settingsView.frame.width/2, y: view.frame.height/2 - settingsView.frame.height/2)
             }
         default:
             return
         }
+    }
+    
+    /**When a transient / impermanent view is being presented then blur the background*/
+    func presentationInProgress(){
+        isTransientViewBeingPresented = true
+        /**Add a blurred view to inform the user that the current focus is solely on the presented view*/
+        view.addSubview(blurredView)
+    }
+    
+    /**Notification another view or view controller can send to this view controller notifying it of the presentation of its content being complete*/
+    func presentationComplete(){
+        /** Remove the blurred view as the focus is now back on this view controller's content*/
+        blurredView.removeFromSuperview()
     }
     
     /** Action handler for  touch down events on the bottom navigation buttons*/
@@ -738,10 +850,14 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         
         /** Make the view slightly transparent and scale it down followed by immediately undoing said transforms and alpha changes*/
         UIView.animate(withDuration: 0.25, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
-            sender.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
+            let scale = CGAffineTransform(scaleX: 0.8, y: 0.8)
+            let translate = CGAffineTransform(translationX: 0, y: -20)
+            sender.transform = scale.concatenating(translate)
         }
         UIView.animate(withDuration: 0.25, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
-            sender.transform = CGAffineTransform(scaleX: 1, y: 1)
+            let scale = CGAffineTransform(scaleX: 1, y: 1)
+            let translate = CGAffineTransform(translationX: 0, y: 0)
+            sender.transform = scale.concatenating(translate)
         }
         UIView.animate(withDuration: 0.25){
             sender.alpha = 0.9
@@ -756,31 +872,19 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         switch sender.tag{
         /** Import Button*/
         case 0:
-            let importVC = ImageProcessingViewController()
-            
-            /** Make the view controller's view the same shape as the button*/
-            importVC.view.frame = sender.frame
-            importVC.view.layer.cornerRadius = sender.layer.cornerRadius
-            
-            /**Add this view above all of the others including nav bars*/
-            UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.addSubview(importVC.view)/**Add this view above all of the others including nav bars*/
-            
-            /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
-            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                importVC.view.frame.origin = CGPoint(x: view.frame.width/2 - importVC.view.frame.width/2, y: view.frame.height/2 - importVC.view.frame.height/2)
-            }
-            UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                importVC.view.frame = view.frame
-                importVC.view.frame.size.height = view.frame.height * 0.9
-                importVC.view.frame.size.width = view.frame.width * 0.9
-                importVC.view.frame.origin = CGPoint(x: view.frame.width/2 - importVC.view.frame.width/2, y: view.frame.height/2 - importVC.view.frame.height/2)
-            }
+            /** After importing an image from the user's photo album feed this image to the process image method*/
+            //processImage(image: nil)
+            break
         /** Text To Speech Button*/
         case 1:
             break
         /** Past History Button triggers a custom segue*/
         case 2:
             let pastHistoryVC = PastHistoryViewController()
+            pastHistoryVC.presentingVC = self
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
+                presentationInProgress()
+            }
             
             /** Make the view controller's view the same shape as the button*/
             pastHistoryVC.view.frame = sender.frame
@@ -791,13 +895,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             
             /** Animate the circular view moving to the center of the screen and expanding into a view that encompasses the entire screen and then push this view controller's view onto the navigation controller's stack to release the memory held up by the current view controller*/
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                pastHistoryVC.view.frame.origin = CGPoint(x: view.frame.width/2 - pastHistoryVC.view.frame.width/2, y: view.frame.height/2 - pastHistoryVC.view.frame.height/2)
+                pastHistoryVC.view.frame.origin = CGPoint(x: view.frame.width/2 - pastHistoryVC.view.frame.width/2, y: view.frame.maxY + 100)
             }
-            UIView.animate(withDuration: 0.5, delay: 0.5, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                pastHistoryVC.view.frame = view.frame
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
-                navigationController?.pushViewController(pastHistoryVC, animated: false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
+                navigationController?.present(pastHistoryVC, animated: true)
             }
             
         /** Transcribe Speech Bubble Button*/
@@ -932,10 +1033,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         switch animated{
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX - topButtonSize * 2, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+                topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX - topButtonSize * 2, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
             }
             UIView.animate(withDuration: 0.5, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+                topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
             }
             topNavButtons[0].isEnabled = false
             topNavButtons[1].isEnabled = false
@@ -952,10 +1053,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         switch animated{
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX + topButtonSize/4, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+                topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX + topButtonSize/4, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
             }
             UIView.animate(withDuration: 0.5, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+                topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
                 topNavButtons[0].isEnabled = true

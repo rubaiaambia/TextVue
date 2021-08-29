@@ -1,37 +1,20 @@
 //
-//  pastHistoryViewController.swift
+//  ImageProcessingViewController.swift
 //  TextVue
 //
-//  Created by Justin Cook on 8/27/21.
+//  Created by Justin Cook on 8/29/21.
 //
 
 import Foundation
 import SwiftUI
 
-public class PastHistoryViewController: UIViewController{
+public class ImageProcessingViewController: UIViewController{
     /**button that enables the user to dismiss the current view*/
     var dismissViewButton = UIButton()
     /**The view controller presenting this view*/
     var presentingVC: HomeViewController!
     /** The UIView that hosts the content within this view*/
     lazy var contentView: UIView = getContentView()
-    
-    //VC Dismissal Handlers
-    /**Handler for the dismissal button which animates the view controller being disposed of*/
-    @objc func dismissVCButtonPressed(sender: UIButton){
-        hapticFeedBack(FeedbackStyle: .medium)
-        presentingVC.presentationComplete()
-        self.dismiss(animated: true)
-    }
-    
-    /**When the view disappears this method handles the clean up*/
-    public override func viewDidDisappear(_ animated: Bool){
-        super.viewDidDisappear(animated)
-        if isBeingDismissed{
-            presentingVC.presentationComplete()
-        }
-    }
-    //VC Dismissal Handlers
     
     override public func viewDidLoad() {
         super.viewDidLoad()
@@ -44,7 +27,7 @@ public class PastHistoryViewController: UIViewController{
         view.addSubview(contentView)
         
         view.backgroundColor = UIColor.clear
-        contentView.backgroundColor = mainBackgroundColor
+        contentView.backgroundColor = mainBackgroundColor.withAlphaComponent(0.95)
         
         createDismissButton()
     }
@@ -79,12 +62,29 @@ public class PastHistoryViewController: UIViewController{
         dismissViewButton.alpha = 0
         
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1){ [self] in
-            dismissViewButton.frame.origin = CGPoint(x: contentView.frame.width - 50, y: 10)
+            dismissViewButton.frame.origin = CGPoint(x: view.frame.width - 50, y: 50)
         }
         UIView.animate(withDuration: 0.25, delay: 0.5){ [self] in
             dismissViewButton.alpha = 1
         }
         
         contentView.addSubview(dismissViewButton)
+    }
+    
+    /**Handler for the dismissal button which animates the view controller being disposed of*/
+    @objc func dismissVCButtonPressed(sender: UIButton){
+        hapticFeedBack(FeedbackStyle: .medium)
+        
+        navigationController?.popViewController(animated: false)
+        presentingVC.view.addSubview(view)
+        
+        UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+            view.frame = CGRect(x: 0, y: 0, width: 0, height: 0)
+            view.frame.origin = CGPoint(x: UIScreen.main.bounds.width/2 - view.frame.width/2, y: UIScreen.main.bounds.height/2 - view.frame.height/2)
+        }
+        /** Dispose of this UIView from memory*/
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
+            view.removeFromSuperview()
+        }
     }
 }

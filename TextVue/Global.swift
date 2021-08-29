@@ -8,15 +8,82 @@
 import Foundation
 import SwiftUI
 
+//Custom Colors
 /**Lilac  Color*/
 let appThemeColor = UIColor(red: 193/255, green: 162/255, blue: 197/255, alpha: 1)
+/**systemGray6*/
+var systemGray6: UIColor = UIColor(red: 28/255, green: 28/255, blue: 30/255, alpha: 1)
 /**Darkmode Preference*/
 var isDarkModeEnabled = false
+/**Bool that controls whether darkmode is controlled by the user's system appearance preferences or not*/
 var useSystemUIAppearance = true
-var backgroundColor = UIColor.white
+/**Background color given to any applicable view*/
+var mainBackgroundColor = UIColor.white
+/**font  color given to any applicable text*/
 var fontColor = UIColor.black
+/**Secondary Background color given to any applicable view*/
 var secondaryBackgroundColor = UIColor.lightGray
+/**Bool that controls device torch*/
+var flashLightOn = false
+/**Bool that controls which camera to use*/
+var useBackCamera = true
+/**Bool that controls the  segmented control at the top of the view*/
+var translationEnabled = false
 
+/** Loads all user default preferences saved in memory if any*/
+func loadUserPreferences(){
+    loadCameraPreferences()
+    loadDarkModePreference()
+    loadTranslationPreference()
+}
+
+/** Saves all user default preferences to local storage*/
+func saveUserPreferences(){
+    saveCameraPreferences()
+    saveDarkModePreference()
+    saveTranslationPreference()
+}
+
+/** Load the user's preferences for the translation segemented control*/
+func loadTranslationPreference(){
+    /** Load up the user's preference for whether to use the back camera or front camera*/
+    if let bool = UserDefaults.standard.object(forKey: "translationEnabled") as? Bool{
+        translationEnabled = bool
+    }
+}
+
+/** Save the user's preferences for the translation segemented control*/
+func saveTranslationPreference(){
+    UserDefaults.standard.removeObject(forKey: "translationEnabled")
+    UserDefaults.standard.synchronize()
+    UserDefaults.standard.set(translationEnabled, forKey: "translationEnabled")
+}
+
+/** Load the user's preferences for camera specific functionalities*/
+func loadCameraPreferences(){
+    /** Load up the user's preference for whether to use the back camera or front camera*/
+    if let bool = UserDefaults.standard.object(forKey: "CameraDevice") as? Bool{
+        useBackCamera = bool
+    }
+    
+    /** Load up the user's preference for whether to use the flashlight or not*/
+    if let bool = UserDefaults.standard.object(forKey: "FlashLightBool") as? Bool{
+        flashLightOn = bool
+    }
+}
+
+/** Save the user's preferences for camera specific functionalities*/
+func saveCameraPreferences(){
+    UserDefaults.standard.removeObject(forKey: "CameraDevice")
+    UserDefaults.standard.synchronize()
+    UserDefaults.standard.set(useBackCamera, forKey: "CameraDevice")
+    
+    UserDefaults.standard.removeObject(forKey: "FlashLightBool")
+    UserDefaults.standard.synchronize()
+    UserDefaults.standard.set(flashLightOn, forKey: "FlashLightBool")
+}
+
+/** Save the user's dark mode preference based on whether they use the system's appearance or the in app toggle*/
 /** Remove the current object stored for the given key, refresh the user defaults database to await any pending updates, and then set a new object for the given key*/
 func saveDarkModePreference(){
     UserDefaults.standard.removeObject(forKey: "Darkmode")
@@ -28,7 +95,7 @@ func saveDarkModePreference(){
     UserDefaults.standard.set(useSystemUIAppearance, forKey: "UseSystemUIAppearance")
 }
 
-/** Load the user's dark mode preference based on */
+/** Load the user's dark mode preference based on whether they use the system's appearance or the in app toggle*/
 func loadDarkModePreference(){
     /** Used to detect whether an object is present for the given key in user defaults*/
     var isObjectPresent = false
@@ -46,16 +113,16 @@ func loadDarkModePreference(){
     
     /** If no darkmode preference exists then simply set the preference depending on the user's device appearance or if the user has specified that they wish to use their system preferences then use this, either way this is the default*/
     if(isObjectPresent == false || useSystemUIAppearance == true){
-    switch UITraitCollection.current.userInterfaceStyle{
-    case .dark:
-        isDarkModeEnabled = true
-    case .light:
-        isDarkModeEnabled = false
-    case .unspecified:
-        isDarkModeEnabled = false
-    @unknown default:
-        isDarkModeEnabled = false
-    }
+        switch UITraitCollection.current.userInterfaceStyle{
+        case .dark:
+            isDarkModeEnabled = true
+        case .light:
+            isDarkModeEnabled = false
+        case .unspecified:
+            isDarkModeEnabled = false
+        @unknown default:
+            isDarkModeEnabled = false
+        }
     }
     setDarkModeTraits()
 }
@@ -64,11 +131,11 @@ func loadDarkModePreference(){
 func setDarkModeTraits(){
     switch isDarkModeEnabled{
     case true:
-        backgroundColor = UIColor.black
+        mainBackgroundColor = systemGray6
         fontColor = UIColor.white
         secondaryBackgroundColor = UIColor.darkGray
     case false:
-        backgroundColor = UIColor.white
+        mainBackgroundColor = UIColor.white
         fontColor = UIColor.black
         secondaryBackgroundColor = UIColor.lightGray
     }

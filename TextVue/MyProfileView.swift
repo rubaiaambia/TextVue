@@ -1,5 +1,5 @@
 //
-//  SettingsViewController.swift
+//  MyProfileViewController.swift
 //  TextVue
 //
 //  Created by Justin Cook on 8/29/21.
@@ -8,8 +8,8 @@
 import Foundation
 import SwiftUI
 
-/**View that displays all the necessary settings options applicable to the function of this application*/
-public class SettingsView: UIView{
+/** View that displays the local-only profile of the user*/
+public class MyProfileView: UIView{
     /**button that enables the user to dismiss the current view*/
     var dismissViewButton = UIButton()
     /**Specifies the original size the view of this view controller should go back to when a dismissal animation is being played which is the reverse of the custom appearance segue*/
