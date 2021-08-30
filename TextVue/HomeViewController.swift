@@ -428,7 +428,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
-    /**Pinch recognizer for zooming in the video preview*/
+    /**Pinch recognizer for zooming in the video preview */
     @objc func pinch(sender: UIPinchGestureRecognizer){
         /** Multiply the zoom factor here with the stored zoom factor (if it exists)*/
         var zoomScale = sender.scale * zoomFactor
