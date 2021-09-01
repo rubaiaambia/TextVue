@@ -27,36 +27,36 @@ var secondaryBackgroundColor = UIColor.lightGray
 var flashLightOn = false
 /**Bool that controls which camera to use*/
 var useBackCamera = true
-/**Bool that controls the  segmented control at the top of the view*/
-var translationEnabled = false
+/**Bool that controls the segmented control at the top of the view to switch between a normal camera photo taking mode to an augmented reality scene*/
+var augmentedRealityModeEnabled = false
 
 /** Loads all user default preferences saved in memory if any*/
 func loadUserPreferences(){
     loadCameraPreferences()
     loadDarkModePreference()
-    loadTranslationPreference()
+    loadPhotoARModePreference()
 }
 
 /** Saves all user default preferences to local storage*/
 func saveUserPreferences(){
     saveCameraPreferences()
     saveDarkModePreference()
-    saveTranslationPreference()
+    savePhotoARModePreference()
 }
 
-/** Load the user's preferences for the translation segemented control*/
-func loadTranslationPreference(){
+/** Load the user's preferences for the photo mode or AR mode segemented control*/
+func loadPhotoARModePreference(){
     /** Load up the user's preference for whether to use the back camera or front camera*/
-    if let bool = UserDefaults.standard.object(forKey: "translationEnabled") as? Bool{
-        translationEnabled = bool
+    if let bool = UserDefaults.standard.object(forKey: "AREnabled") as? Bool{
+        augmentedRealityModeEnabled = bool
     }
 }
 
-/** Save the user's preferences for the translation segemented control*/
-func saveTranslationPreference(){
-    UserDefaults.standard.removeObject(forKey: "translationEnabled")
+/** Save the user's preferences for the photo mode or AR mode segemented control*/
+func savePhotoARModePreference(){
+    UserDefaults.standard.removeObject(forKey: "AREnabled")
     UserDefaults.standard.synchronize()
-    UserDefaults.standard.set(translationEnabled, forKey: "translationEnabled")
+    UserDefaults.standard.set(augmentedRealityModeEnabled, forKey: "AREnabled")
 }
 
 /** Load the user's preferences for camera specific functionalities*/

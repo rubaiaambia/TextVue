@@ -16,11 +16,11 @@
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
                             <segmentedControl opaque="NO" contentMode="scaleToFill" fixedFrame="YES" contentHorizontalAlignment="left" contentVerticalAlignment="top" segmentControlStyle="plain" selectedSegmentIndex="0" translatesAutoresizingMaskIntoConstraints="NO" id="Adf-SH-2gV">
-                                <rect key="frame" x="132" y="44" width="153" height="32"/>
+                                <rect key="frame" x="115" y="44" width="187" height="32"/>
                                 <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                                 <segments>
-                                    <segment title="English"/>
-                                    <segment title="Translate"/>
+                                    <segment title="Photo Mode"/>
+                                    <segment title="AR Mode"/>
                                 </segments>
                                 <color key="selectedSegmentTintColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
                             </segmentedControl>
@@ -30,7 +30,7 @@
                     </view>
                     <navigationItem key="navigationItem" id="Sd3-Cc-Q4f"/>
                     <connections>
-                        <outlet property="translationSegmentedControl" destination="Adf-SH-2gV" id="FXe-Rd-CUg"/>
+                        <outlet property="photoARModeSegmentedControl" destination="Adf-SH-2gV" id="FXe-Rd-CUg"/>
                     </connections>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>

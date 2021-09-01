@@ -14,10 +14,11 @@ import UIKit
 import ImageCaptureCore
 import AVKit
 import CoreVideo
+import ARKit
 
 /**The base of operations this is where the magic happens and all other areas of the app are rerouted to*/
 class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
-    @IBOutlet weak var translationSegmentedControl: UISegmentedControl!
+    @IBOutlet weak var photoARModeSegmentedControl: UISegmentedControl!
     /**Import from Photo Library Button*/
     var importButton = UIButton()
     /**Text to  speech Button*/
@@ -66,13 +67,20 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     var zoomFactor: CGFloat = 1
     /**Button that displays the current zoom factor and enables fast manipulation of it versus pinching*/
     var zoomFactorButton: UIButton = UIButton()
+    /** Rectangle for the content size and location of the video preview layer and AR scene for displaying what the camera currently sees*/
+    lazy var contentFrame: CGRect = getContentFrame()
     
     /**Blurred UIView that can overlayed ontop of another view as a subview*/
     lazy var blurredView = getBlurredView()
     /**Specify if a view is being presented, if it is then the blurred view is already added to the main screen*/
     var isTransientViewBeingPresented = false
     
-    /**Get the camera device that will be used for the capture session*/
+    /** Augmented Reality variables*/
+    private let configuration = ARWorldTrackingConfiguration()
+    var sceneView: ARSCNView = ARSCNView()
+    
+    
+    /**Get the camera device that will be used for the capture session, defaults automatically use the best format and frame rate for the current device*/
     func getCamera()->AVCaptureDevice?{
         loadCameraPreferences()
         switch useBackCamera{
@@ -105,7 +113,6 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     /**Activated when the view’s content is first painted to the screen*/
     override func viewWillAppear(_ animated: Bool){
-        loadUserPreferences()
         if isTransientViewBeingPresented == false{
             blurredView.removeFromSuperview()
         }
@@ -116,15 +123,28 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     }
     
     @objc func appIsInBackground(){
-        resetZoomLevel()
+        switch augmentedRealityModeEnabled{
+        case true:
+            break
+        case false:
+            resetZoomLevel()
+        }
     }
-    
     
     @objc func appMovedToBackground(){
         if isTransientViewBeingPresented == false{
             view.addSubview(blurredView)
         }
-        captureSession.stopRunning()
+        
+        switch augmentedRealityModeEnabled{
+        case true:
+            sceneView.session.pause()
+        case false:
+            guard captureSession != nil else {
+                return
+            }
+            captureSession.stopRunning()
+        }
     }
     
     @objc func appMovedToForeground(){
@@ -140,7 +160,24 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         if isTransientViewBeingPresented == false{
             blurredView.removeFromSuperview()
         }
-        captureSession.startRunning()
+        
+        switch augmentedRealityModeEnabled{
+        case true:
+            sceneView.session.run(configuration)
+        case false:
+            break
+        }
+        
+        guard captureSession != nil else {
+            return
+        }
+        
+        switch augmentedRealityModeEnabled{
+        case true:
+            break
+        case false:
+            captureSession.startRunning()
+        }
     }
     
     /** Set up notifications from app delegate to know when the app goes to or from the background state*/
@@ -157,14 +194,30 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     override func viewDidLoad(){
         super.viewDidLoad()
+        loadUserPreferences()
         setNotificationCenter()
-        setCameraView()
-        setNavButtons()
-        setTopNavButtons()
+        
+        switch augmentedRealityModeEnabled{
+        case true:
+            addARScene()
+            displayARSceneStats()
+        case false:
+            setCameraView()
+        }
+        
+        constrainARScene()
         setZoomFactorButton()
         addDoubleTapGesture()
         addSingleTapGesture()
         addPinchGesture()
+        setNavButtons()
+        setTopNavButtons()
+    }
+    
+    /** Displays general information about the AR Scene such as frames per second and timing*/
+    func displayARSceneStats(){
+        sceneView.showsStatistics = true
+        sceneView.debugOptions = [ARSCNDebugOptions.showFeaturePoints]
     }
     
     //Logic for viewing capturing and processing images
@@ -202,7 +255,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     }
     
     /** Create a video preview that corresponds to the dimensions of the user's device*/
-    func setupLivePreview() {
+    func setupLivePreview(){
         videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
         
         /** Set the frame of the camera preview to that of the view's frame to prevent this resizing from */
@@ -214,79 +267,116 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         
         view.layer.addSublayer(videoPreviewLayer)
         
+        captureSession.commitConfiguration()
+        
         DispatchQueue.global(qos: .userInitiated).async{[self] in
-            captureSession.startRunning()
             constrainPreviewLayer()
+            captureSession.startRunning()
         }
     }
     
     /** Constrain the video preview's layer to the dimensions of the device*/
     func constrainPreviewLayer(){
         DispatchQueue.main.asyncAfter(deadline: .now()){[self] in
-            videoPreviewLayer.frame = view.bounds
-            videoPreviewLayer.frame.size.height = videoPreviewLayer.frame.size.height - bottomButtonSize
+            videoPreviewLayer.frame = contentFrame
         }
+    }
+    
+    //Augmented Reality methods
+    /** Add the Augmented reality scene to the main view*/
+    func addARScene(){
+        view.addSubview(sceneView)
+        sceneView.session.run(configuration)
+    }
+    
+    /** Remove the Augmented reality scene from the main view and create a new instance of it to release the old memory*/
+    func removeARScene(){
+        sceneView.session.pause()
+        sceneView.removeFromSuperview()
+        sceneView = ARSCNView()
+        constrainARScene()
+    }
+    
+    /** Constrain the AR Scene's frame to the dimensions of the device*/
+    func constrainARScene(){
+        DispatchQueue.main.asyncAfter(deadline: .now()){[self] in
+            sceneView.frame = contentFrame
+        }
+    }
+    //Augmented Reality methods
+    
+    /** Returns a CGRect that's the size and location of the live video content displayed by the camera*/
+    func getContentFrame()->CGRect{
+        var frame = CGRect()
+        frame = view.bounds
+        frame.size.height = frame.size.height - bottomButtonSize
+        return frame
     }
     
     /** Button activated logic that triggers a capture event from the output protocol*/
     @objc func takePhoto(sender: UIButton){
         hapticFeedBack(FeedbackStyle: .medium)
         
-        /** The original brightness of the user's screen, to be restored after a front facing flash*/
-        let originalBrightness = UIScreen.main.brightness
-        
-        switch flashLightOn {
+        switch augmentedRealityModeEnabled{
         case true:
-            if currentCamera?.position == .back{
-                do{
-                    try currentCamera?.lockForConfiguration()
-                    currentCamera?.torchMode = .on
-                    currentCamera?.unlockForConfiguration()
-                }
-                catch{
-                    print("ERROR: Torch could not be used")
-                }
-            }
-            else{
-                view.addSubview(artificialFlashLight)
-                /** Set the screen's brightness to max to give off maximum luminosity*/
-                UIScreen.main.brightness = CGFloat(1)
-            }
+            return
         case false:
-            if currentCamera?.position == .back{
-                do{
-                    try currentCamera?.lockForConfiguration()
-                    currentCamera?.torchMode = .off
-                    currentCamera?.unlockForConfiguration()
+            /** The original brightness of the user's screen, to be restored after a front facing flash*/
+            let originalBrightness = UIScreen.main.brightness
+            
+            switch flashLightOn {
+            case true:
+                if currentCamera?.position == .back{
+                    do{
+                        try currentCamera?.lockForConfiguration()
+                        currentCamera?.torchMode = .on
+                        currentCamera?.unlockForConfiguration()
+                    }
+                    catch{
+                        print("ERROR: Torch could not be used")
+                    }
                 }
-                catch{
-                    print("ERROR: Torch could not be used")
+                else{
+                    view.addSubview(artificialFlashLight)
+                    /** Set the screen's brightness to max to give off maximum luminosity*/
+                    UIScreen.main.brightness = CGFloat(1)
+                }
+            case false:
+                if currentCamera?.position == .back{
+                    do{
+                        try currentCamera?.lockForConfiguration()
+                        currentCamera?.torchMode = .off
+                        currentCamera?.unlockForConfiguration()
+                    }
+                    catch{
+                        print("ERROR: Torch could not be used")
+                    }
                 }
             }
-        }
-        
-        /** Delay the photo capture a bit to allow the flashlight to be turned on*/
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25){[self] in
-            let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
-            stillImageOutput.capturePhoto(with: settings, delegate: self)
-        }
-        
-        /** Turn off the flash light*/
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
-            if currentCamera?.position == .back{
-                do{
-                    try currentCamera?.lockForConfiguration()
-                    currentCamera?.torchMode = .off
-                    currentCamera?.unlockForConfiguration()
-                }
-                catch{
-                    print("ERROR: Torch could not be used")
-                }
+            
+            /** Delay the photo capture a bit to allow the flashlight to be turned on*/
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25){[self] in
+                let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+                stillImageOutput.capturePhoto(with: settings, delegate: self)
             }
-            else if currentCamera?.position == .front{
-                /** remove the bright view and restore the user's brightness level to the original value it was at*/
-                artificialFlashLight.removeFromSuperview()
-                UIScreen.main.brightness = originalBrightness
+            
+            /** Turn off the flash light*/
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
+                if currentCamera?.position == .back{
+                    do{
+                        try currentCamera?.lockForConfiguration()
+                        currentCamera?.torchMode = .off
+                        currentCamera?.unlockForConfiguration()
+                    }
+                    catch{
+                        print("ERROR: Torch could not be used")
+                    }
+                }
+                else if currentCamera?.position == .front{
+                    /** remove the bright view and restore the user's brightness level to the original value it was at*/
+                    artificialFlashLight.removeFromSuperview()
+                    UIScreen.main.brightness = originalBrightness
+                }
             }
         }
     }
@@ -362,7 +452,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     /** Handler for recognizing when the user taps the view one time*/
     @objc func viewSingleTapped(sender: UITapGestureRecognizer){
-        if(videoPreviewLayer.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true && isTransientViewBeingPresented == false){
+        
+        if(contentFrame.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true && isTransientViewBeingPresented == false){
             hapticFeedBack(FeedbackStyle: .soft)
             
             /** Snapchat esque circular fade in fade out animation signals where the user has tapped*/
@@ -402,27 +493,32 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
                 circleView.removeFromSuperview()
             }
             
-            /** Crash inbound if the camera device isn't present and the code below is activated, so just return*/
-            guard currentCamera != nil else {
+            switch augmentedRealityModeEnabled{
+            case true:
                 return
-            }
-            
-            /** Method for focusing the camera on the point the user touched*/
-            /**Configure the device to focus on the focus point*/
-            let focusPoint = sender.location(in: view)
-            if currentCamera?.position == .back{
-                do {
-                    try currentCamera!.lockForConfiguration()
-                    currentCamera!.focusPointOfInterest = focusPoint
-                    currentCamera!.focusMode = .continuousAutoFocus
-                    //currentCamera!.focusMode = .autoFocus
-                    //currentCamera!.focusMode = .locked
-                    //currentCamera!.exposurePointOfInterest = focusPoint
-                    //currentCamera!.exposureMode = AVCaptureDevice.ExposureMode.continuousAutoExposure
-                    currentCamera!.unlockForConfiguration()
+            case false:
+                /** Crash inbound if the camera device isn't present and the code below is activated, so just return*/
+                guard currentCamera != nil else {
+                    return
                 }
-                catch {
-                    print("Device unavailable for configuration")
+                
+                /** Method for focusing the camera on the point the user touched*/
+                /**Configure the device to focus on the focus point*/
+                let focusPoint = sender.location(in: view)
+                if currentCamera?.position == .back{
+                    do {
+                        try currentCamera!.lockForConfiguration()
+                        currentCamera!.focusPointOfInterest = focusPoint
+                        currentCamera!.focusMode = .continuousAutoFocus
+                        //currentCamera!.focusMode = .autoFocus
+                        //currentCamera!.focusMode = .locked
+                        //currentCamera!.exposurePointOfInterest = focusPoint
+                        //currentCamera!.exposureMode = AVCaptureDevice.ExposureMode.continuousAutoExposure
+                        currentCamera!.unlockForConfiguration()
+                    }
+                    catch {
+                        print("Device unavailable for configuration")
+                    }
                 }
             }
         }
@@ -437,7 +533,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         if(sender.state == .ended){
             zoomFactor = zoomScale >= 1 ? zoomScale : 1
         }
-    
+        
         /** Crash inbound if the camera device isn't present and the code below is activated, so just return*/
         guard currentCamera != nil else {
             return
@@ -448,17 +544,17 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             defer{currentCamera?.unlockForConfiguration()}
             if(zoomScale <= (currentCamera?.activeFormat.videoMaxZoomFactor)! && zoomScale >= 1){
                 currentCamera?.videoZoomFactor = zoomScale
-                    zoomFactorButton.setTitle(String(format: "%.1f", zoomScale)  + "x", for: .normal)
+                zoomFactorButton.setTitle(String(format: "%.1f", zoomScale)  + "x", for: .normal)
             }
             else if(zoomScale >= (currentCamera?.activeFormat.videoMaxZoomFactor)!){
                 zoomScale = (currentCamera?.activeFormat.videoMaxZoomFactor)!
                 currentCamera?.videoZoomFactor = zoomScale
-                    zoomFactorButton.setTitle(String(format: "%.1f", zoomScale)  + "x", for: .normal)
+                zoomFactorButton.setTitle(String(format: "%.1f", zoomScale)  + "x", for: .normal)
             }
             else if(zoomScale <= 1){
                 zoomScale = 1
                 currentCamera?.videoZoomFactor = zoomScale
-                    zoomFactorButton.setTitle(String(format: "%.1f", zoomScale)  + "x", for: .normal)
+                zoomFactorButton.setTitle(String(format: "%.1f", zoomScale)  + "x", for: .normal)
             }
             else{
                 //print("Unable to set video zoom factor: (max \(currentCamera!.activeFormat.videoMaxZoomFactor), asked \(zoomScale))")
@@ -507,12 +603,17 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             sender.isEnabled = true
         }
         
-        /**Prevent a camera switch from being triggered while a transient view is being presented and the switch camera button is being used, also only register touches inside of the video preview layer and not inside of the switch camera button under any circumstances*/
-        if(videoPreviewLayer.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true && isTransientViewBeingPresented == false){
-            hapticFeedBack(FeedbackStyle: .rigid)
-            
-            /** Animate this button since it does the same operation as the double tap gesture*/
-            switchCameraButtonPressed(sender: switchCameraButton)
+        switch augmentedRealityModeEnabled{
+        case true:
+            return
+        case false:
+            /**Prevent a camera switch from being triggered while a transient view is being presented and the switch camera button is being used, also only register touches inside of the video preview layer and not inside of the switch camera button under any circumstances*/
+            if(contentFrame.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true && isTransientViewBeingPresented == false){
+                hapticFeedBack(FeedbackStyle: .rigid)
+                
+                /** Animate this button since it does the same operation as the double tap gesture*/
+                switchCameraButtonPressed(sender: switchCameraButton)
+            }
         }
     }
     
@@ -533,20 +634,25 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         /** sets the transform to the identity matrix of itself, which inverts the previous transform and allows the transform above to repeat infinitely, essentially resetting the process via linear algebra*/
         sender.transform = .identity
         
-        hapticFeedBack(FeedbackStyle: .rigid)
-        switch currentCamera?.position{
-        case .front:
-            useBackCamera = true
-            currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)!
-            setCameraView()
-            updateCaptureSession()
-        case .back:
-            useBackCamera = false
-            currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)!
-            setCameraView()
-            updateCaptureSession()
-        default:
-            break
+        switch augmentedRealityModeEnabled{
+        case true:
+            return
+        case false:
+            hapticFeedBack(FeedbackStyle: .rigid)
+            switch currentCamera?.position{
+            case .front:
+                useBackCamera = true
+                currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)!
+                setCameraView()
+                updateCaptureSession()
+            case .back:
+                useBackCamera = false
+                currentCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)!
+                setCameraView()
+                updateCaptureSession()
+            default:
+                break
+            }
         }
     }
     
@@ -598,40 +704,85 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     //Logic for viewing capturing and processing images
     
     /** Handler for the segmented control touch down events*/
-    @objc func translationSegmentedControlPressed(sender: UISegmentedControl){
-        switch sender.selectedSegmentIndex {
+    @objc func photoARModeSegmentedControlPressed(sender: UISegmentedControl){
+        resetZoomLevel()
+        switch sender.selectedSegmentIndex{
         case 0:
-            translationEnabled = false
+            augmentedRealityModeEnabled = false
+            
+            removeARScene()
+            
+            /** Start up the camera and bring the UI Nav buttons forwards*/
+            setCameraView()
+            bringNavUIForwards()
         case 1:
-            translationEnabled = true
+            augmentedRealityModeEnabled = true
+            
+            /** Remove the video preview layer and then paint the AR Scene to the view and then bring all the nav UI to the front*/
+            removeCameraView()
+            
+            addARScene()
+            displayARSceneStats()
+            bringNavUIForwards()
+            //hideBottomNavButtons(animated: true)
         default:
             break
         }
+        savePhotoARModePreference()
+    }
+    
+    /** Removes the current camera view in preparation for the augemented reality scene to be presented*/
+    func removeCameraView(){
+        videoPreviewLayer.removeFromSuperlayer()
+        videoPreviewLayerActive = false
+        guard captureSession != nil else {
+            return
+        }
+        captureSession.stopRunning()
+    }
+    
+    /** Brings the navigation UI forwards so that the rest of the content isn't painted on top of it*/
+    func bringNavUIForwards(){
+        view.bringSubviewToFront(importButton)
+        view.bringSubviewToFront(textToSpeechButton)
+        view.bringSubviewToFront(pastHistoryButton)
+        view.bringSubviewToFront(transcribeSpeechBubbleButton)
+        view.bringSubviewToFront(flashLightButton)
+        view.bringSubviewToFront(artificialFlashLight)
+        view.bringSubviewToFront(switchCameraButton)
+        view.bringSubviewToFront(capturePictureButton)
+        view.bringSubviewToFront(myProfileButton)
+        view.bringSubviewToFront(settingsButton)
+        view.bringSubviewToFront(zoomFactorButton)
+        view.bringSubviewToFront(photoARModeSegmentedControl)
+        view.bringSubviewToFront(radialBorder1)
+        view.bringSubviewToFront(radialBorder2)
+        view.bringSubviewToFront(radialBorder3)
     }
     
     //Constructor Methods for top and bottom navigation buttons
     /** Create Top navigation buttons*/
     func setTopNavButtons(){
-        loadTranslationPreference()
+        loadPhotoARModePreference()
         topButtonSize = view.frame.width/4 - view.frame.width * 0.12
         
-        translationSegmentedControl.selectedSegmentTintColor = UIColor.white
-        translationSegmentedControl.setTitleTextAttributes([NSAttributedString.Key.foregroundColor: UIColor.white], for: .normal)
-        translationSegmentedControl.setTitleTextAttributes([NSAttributedString.Key.foregroundColor: appThemeColor], for: .selected)
-        translationSegmentedControl.frame.origin = CGPoint(x: view.frame.width/2 - translationSegmentedControl.frame.width/2, y: view.safeAreaInsets.top + translationSegmentedControl.frame.height)
-        translationSegmentedControl.isExclusiveTouch = true
-        translationSegmentedControl.addTarget(self, action: #selector(translationSegmentedControlPressed), for: .valueChanged)
+        photoARModeSegmentedControl.selectedSegmentTintColor = UIColor.white
+        photoARModeSegmentedControl.setTitleTextAttributes([NSAttributedString.Key.foregroundColor: UIColor.white], for: .normal)
+        photoARModeSegmentedControl.setTitleTextAttributes([NSAttributedString.Key.foregroundColor: appThemeColor], for: .selected)
+        photoARModeSegmentedControl.frame.origin = CGPoint(x: view.frame.width/2 - photoARModeSegmentedControl.frame.width/2, y: view.safeAreaInsets.top + photoARModeSegmentedControl.frame.height)
+        photoARModeSegmentedControl.isExclusiveTouch = true
+        photoARModeSegmentedControl.addTarget(self, action: #selector(photoARModeSegmentedControlPressed), for: .valueChanged)
         
-        switch translationEnabled{
+        switch augmentedRealityModeEnabled{
         case true:
-            translationSegmentedControl.selectedSegmentIndex = 1
+            photoARModeSegmentedControl.selectedSegmentIndex = 1
         case false:
-            translationSegmentedControl.selectedSegmentIndex = 0
+            photoARModeSegmentedControl.selectedSegmentIndex = 0
         }
         
-        view.bringSubviewToFront(translationSegmentedControl)
+        view.bringSubviewToFront(photoARModeSegmentedControl)
         
-        myProfileButton = UIButton(frame: CGRect(x: view.frame.minX + topButtonSize/4, y: translationSegmentedControl.frame.origin.y + topButtonSize/4, width: topButtonSize, height: topButtonSize))
+        myProfileButton = UIButton(frame: CGRect(x: view.frame.minX + topButtonSize/4, y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4, width: topButtonSize, height: topButtonSize))
         myProfileButton.setImage(UIImage(systemName: "person.crop.circle.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
         myProfileButton.tintColor = UIColor.white
         myProfileButton.imageView?.contentMode = .scaleAspectFit
@@ -647,7 +798,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         myProfileButton.addTarget(self, action: #selector(topNavButtonPressed), for: .touchDown)
         myProfileButton.tag = 0
         
-        settingsButton = UIButton(frame: CGRect(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4, width: topButtonSize, height: topButtonSize))
+        settingsButton = UIButton(frame: CGRect(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4, width: topButtonSize, height: topButtonSize))
         settingsButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
         settingsButton.tintColor = UIColor.white
         settingsButton.imageView?.contentMode = .scaleAspectFit
@@ -682,8 +833,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     func setZoomFactorButton(){
         let buttonSize = view.frame.width/4 - view.frame.width * 0.14
         
-        zoomFactorButton = UIButton(frame: CGRect(x: view.frame.midX - buttonSize/2, y: translationSegmentedControl.frame.maxY + 10, width: buttonSize, height: buttonSize))
-  
+        zoomFactorButton = UIButton(frame: CGRect(x: view.frame.midX - buttonSize/2, y: photoARModeSegmentedControl.frame.maxY + 10, width: buttonSize, height: buttonSize))
+        
         zoomFactorButton.tintColor = UIColor.white
         zoomFactorButton.setTitle(String(format: "%.1f", zoomFactor) + "x", for: .normal)
         zoomFactorButton.setTitleColor(UIColor.white, for: .normal)
@@ -955,12 +1106,25 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         isTransientViewBeingPresented = true
         /**Add a blurred view to inform the user that the current focus is solely on the presented view*/
         view.addSubview(blurredView)
+        switch augmentedRealityModeEnabled{
+        case true:
+            sceneView.session.pause()
+        case false:
+            break
+        }
     }
     
     /**Notification another view or view controller can send to this view controller notifying it of the presentation of its content being complete*/
     func presentationComplete(){
         /** Remove the blurred view as the focus is now back on this view controller's content*/
         blurredView.removeFromSuperview()
+        isTransientViewBeingPresented = false
+        switch augmentedRealityModeEnabled{
+        case true:
+            sceneView.session.run(configuration)
+        case false:
+            break
+        }
     }
     
     /** Action handler for  touch down events on the bottom navigation buttons*/
@@ -1156,16 +1320,16 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         switch animated{
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX - topButtonSize * 2, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+                topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX - topButtonSize * 2, y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
             }
             UIView.animate(withDuration: 0.5, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+                topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
             }
             topNavButtons[0].isEnabled = false
             topNavButtons[1].isEnabled = false
         case false:
-            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX - topButtonSize * 2, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
-            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX - topButtonSize * 2, y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
+            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
             topNavButtons[0].isEnabled = false
             topNavButtons[1].isEnabled = false
         }
@@ -1176,18 +1340,18 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         switch animated{
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX + topButtonSize/4, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+                topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX + topButtonSize/4, y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
             }
             UIView.animate(withDuration: 0.5, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
-                topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+                topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
                 topNavButtons[0].isEnabled = true
                 topNavButtons[1].isEnabled = true
             }
         case false:
-            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX + topButtonSize/4, y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
-            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: translationSegmentedControl.frame.origin.y + topButtonSize/4)
+            topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX + topButtonSize/4, y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
+            topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX - (topButtonSize + topButtonSize/4), y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
             topNavButtons[0].isEnabled = true
             topNavButtons[1].isEnabled = true
         }

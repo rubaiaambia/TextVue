@@ -61,6 +61,6 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Allow Access To Photos </string>
+	<string>App needs camera access for augmented reality </string>
 </dict>
 </plist>
