@@ -54,6 +54,13 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     var topButtonSize: CGFloat = 0
     var selectionButtonSize: CGFloat = 0
     
+    /** Bools that state whether or not the following UI elements are digitally hidden*/
+    var bottomNavHidden = false
+    var topNavHidden = false
+    var captureButtonsHidden = false
+    var selectionButtonsHidden = true
+    var zoomFactorButtonHidden = false
+    
     /**Capture Session variables*/
     var captureSession: AVCaptureSession!
     /**Static Photo output by the capture session*/
@@ -339,6 +346,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
         setCoach()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75){[self] in
             hideCaptureButtons(animated: true)
+            hideZoomFactorButton(animated: true)
         }
     }
     
@@ -594,19 +602,30 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
                 hideZoomFactorButton(animated: true)
                 
                 selectionBox = UIView(frame: CGRect(x: location.x, y: location.y, width: 1, height: 1))
-                selectionBox.addDashedBorder(strokeColor: UIColor.white, fillColor: UIColor.clear, lineWidth: 5, lineDashPattern: [30,10], cornerRadius: 40)
+                selectionBox.addDashedBorder(strokeColor: UIColor.white, fillColor: UIColor.clear, lineWidth: 5, lineDashPattern: [30,10], cornerRadius: 20)
                 selectionBox.animateDashedBorder()
                 view.addSubview(selectionBox)
             }
             else if(sender.state == .changed){
                 selectionBox.frame = CGRect(x: selectionBox.frame.origin.x, y: selectionBox.frame.origin.y, width: (location.x - selectionBox.frame.origin.x), height: (location.y - selectionBox.frame.origin.y))
-                selectionBox.updateDashedBorder(cornerRadius: 40)
+                if(selectionBox.frame.height < view.frame.width/4 || selectionBox.frame.width < view.frame.width/4){
+                selectionBox.updateDashedBorder(cornerRadius: 20,strokeColor: UIColor.red)
+                }
+                else{
+                selectionBox.updateDashedBorder(cornerRadius: 20,strokeColor: UIColor.white)
+                }
             }
             else if(sender.state == .ended){
+                if(selectionBox.frame.height >= view.frame.width/4 && selectionBox.frame.width >= view.frame.width/4){
+                selectionBox.updateDashedBorder(cornerRadius: 20,strokeColor: UIColor.white)
                 selectionBox.convertDashedBorderToStraightBorder()
+                hapticFeedBack(FeedbackStyle: .light)
                 showSelectionButtons(animated: true)
-                //selectionBox.removeFromSuperview()
-                //selectionBox = UIView()
+                }
+                else{
+                hapticFeedBack(FeedbackStyle: .heavy)
+                removeSelectionBox(animated: true)
+                }
             }
         }
         
@@ -896,10 +915,13 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
             
             removeARScene()
             
+            coachingOverlayView.setActive(false, animated: true)
+            
             /** Start up the camera and bring the UI Nav buttons forwards*/
             setCameraView()
             bringNavUIForwards()
             showCaptureButtons(animated: true)
+            showZoomFactorButton(animated: true)
         case 1:
             augmentedRealityModeEnabled = true
             
@@ -909,7 +931,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
             addARScene()
             displayARSceneStats()
             bringNavUIForwards()
-        //hideBottomNavButtons(animated: true)
+            //hideBottomNavButtons(animated: true)
         default:
             break
         }
@@ -1424,26 +1446,38 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
         switch sender.tag {
         //Cancel the selection box
         case 0:
+            removeSelectionBox(animated: true)
+        //Confirm the selection box
+        case 1:
+            removeSelectionBox(animated: false)
+        default:
+            return
+        }
+    }
+    
+    /** Removes the selection box from the scene in either a static or animated manner*/
+    func removeSelectionBox(animated:Bool){
+        switch animated {
+        case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 selectionBox.transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4){[self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2){[self] in
                 selectionBox.removeFromSuperview()
                 hideSelectionButtons(animated: true)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
                 showBottomNavButtons(animated: true)
             }
-        //Confirm the selection box
-        case 1:
-            selectionBox.removeFromSuperview()
-            hideSelectionButtons(animated: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
+        case false:
+                selectionBox.removeFromSuperview()
+                hideSelectionButtons(animated: true)
+            
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
                 showBottomNavButtons(animated: true)
             }
-        default:
-            return
         }
+        
     }
     
     /** Action handler for  touch down events on the bottom navigation buttons*/
@@ -1517,6 +1551,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Hides selection buttons statically or in an animated manner*/
     func hideSelectionButtons(animated:Bool){
+        selectionButtonsHidden = true
+        
         cancelSelectionButton.isEnabled = false
         confirmSelectionButton.isEnabled = false
         switch animated {
@@ -1535,6 +1571,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Shows selection buttons statically or in an animated manner*/
     func showSelectionButtons(animated:Bool){
+        selectionButtonsHidden = false
+        
         cancelSelectionButton.isEnabled = true
         confirmSelectionButton.isEnabled = true
         switch animated {
@@ -1553,6 +1591,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Shows capture buttons and associated views statically or in an animated manner*/
     func showCaptureButtons(animated: Bool){
+        captureButtonsHidden = false
+        
         switch animated {
         case true:
             UIView.animate(withDuration: 1){[self] in
@@ -1579,6 +1619,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Hides capture button and associated views statically or in an animated manner*/
     func hideCaptureButtons(animated: Bool){
+        captureButtonsHidden = true
+        
         switch animated {
         case true:
             UIView.animate(withDuration: 1){[self] in
@@ -1605,6 +1647,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Hide bottom navigation buttons in a static or animated manner*/
     func hideBottomNavButtons(animated: Bool){
+        bottomNavHidden = true
+        
         bottomNavButtons[0].isEnabled = false
         bottomNavButtons[1].isEnabled = false
         bottomNavButtons[2].isEnabled = false
@@ -1634,6 +1678,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Display bottom navigation buttons in a static or animated manner*/
     func showBottomNavButtons(animated: Bool){
+        bottomNavHidden = false
+        
         switch animated {
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
@@ -1668,6 +1714,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Hide top navigation buttons in a static or animated manner*/
     func hideTopNavButtons(animated: Bool){
+        topNavHidden = true
+        
         topNavButtons[0].isEnabled = false
         topNavButtons[1].isEnabled = false
         
@@ -1687,6 +1735,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Display top navigation buttons in a static or animated manner*/
     func showTopNavButtons(animated: Bool){
+        topNavHidden = false
+        
         switch animated{
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in

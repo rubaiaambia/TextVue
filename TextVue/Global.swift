@@ -196,7 +196,7 @@ extension UIView{
         self.layer.addSublayer(shapeLayer)
     }
     
-    func updateDashedBorder(cornerRadius: CGFloat){
+    func updateDashedBorder(cornerRadius: CGFloat, strokeColor: UIColor){
         guard self.layer.sublayers != nil else{
             return
         }
@@ -215,6 +215,7 @@ extension UIView{
         let frameSize = self.frame.size
         let shapeRect = CGRect(x: 0, y: 0, width: frameSize.width, height: frameSize.height)
         dashedBorderLayer.bounds = shapeRect
+        dashedBorderLayer.strokeColor = strokeColor.cgColor
         dashedBorderLayer.position = CGPoint(x: frameSize.width/2, y: frameSize.height/2)
         dashedBorderLayer.path = UIBezierPath(roundedRect: shapeRect, cornerRadius: cornerRadius).cgPath
     }
