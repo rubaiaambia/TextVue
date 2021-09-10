@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import ARKit
 
 //Custom Colors
 /**Lilac  Color*/
@@ -158,3 +159,168 @@ func hapticFeedBack(FeedbackStyle: UIImpactFeedbackGenerator.FeedbackStyle){
         break
     }
 }
+
+extension float4x4 {
+    var translation: simd_float3 {
+        let translation = self.columns.3
+        return simd_float3(translation.x, translation.y, translation.z)
+    }
+}
+
+extension UILabel {
+    var numberOfVisibleLines: Int {
+            let maxSize = CGSize(width: frame.size.width, height: CGFloat(MAXFLOAT))
+            let textHeight = sizeThatFits(maxSize).height
+            let lineHeight = font.lineHeight
+            return Int(ceil(textHeight / lineHeight))
+        }
+}
+
+extension UIView{
+    //Dashed Border Methods
+    func addDashedBorder(strokeColor: UIColor, fillColor: UIColor, lineWidth: CGFloat, lineDashPattern: [NSNumber], cornerRadius: CGFloat){        
+        let shapeLayer:CAShapeLayer = CAShapeLayer()
+        let frameSize = self.frame.size
+        let shapeRect = CGRect(x: 0, y: 0, width: frameSize.width, height: frameSize.height)
+        
+        shapeLayer.bounds = shapeRect
+        shapeLayer.position = CGPoint(x: frameSize.width/2, y: frameSize.height/2)
+        shapeLayer.fillColor = fillColor.cgColor
+        shapeLayer.strokeColor = strokeColor.cgColor
+        shapeLayer.lineWidth = lineWidth
+        shapeLayer.lineJoin = CAShapeLayerLineJoin.round
+        shapeLayer.lineDashPattern = lineDashPattern
+        shapeLayer.path = UIBezierPath(roundedRect: shapeRect, cornerRadius: cornerRadius).cgPath
+        shapeLayer.name = "DashedBorder"
+        
+        self.layer.addSublayer(shapeLayer)
+    }
+    
+    func updateDashedBorder(cornerRadius: CGFloat){
+        guard self.layer.sublayers != nil else{
+            return
+        }
+        
+        var dashedBorderLayer = CAShapeLayer()
+        for layer in self.layer.sublayers!{
+            if(layer.name == "DashedBorder"){
+                dashedBorderLayer = layer as! CAShapeLayer
+            }
+        }
+        
+        guard dashedBorderLayer.name != nil else{
+            return
+        }
+        
+        let frameSize = self.frame.size
+        let shapeRect = CGRect(x: 0, y: 0, width: frameSize.width, height: frameSize.height)
+        dashedBorderLayer.bounds = shapeRect
+        dashedBorderLayer.position = CGPoint(x: frameSize.width/2, y: frameSize.height/2)
+        dashedBorderLayer.path = UIBezierPath(roundedRect: shapeRect, cornerRadius: cornerRadius).cgPath
+    }
+    
+    /** This gives the dashed border the marching ants effect where the lines are moving continuously*/
+    func animateDashedBorder(){
+        guard self.layer.sublayers != nil else{
+            return
+        }
+        
+        var dashedBorderLayer = CAShapeLayer()
+        for layer in self.layer.sublayers!{
+            if(layer.name == "DashedBorder"){
+                dashedBorderLayer = layer as! CAShapeLayer
+            }
+        }
+        
+        let lineDashAnimation = CABasicAnimation(keyPath: "lineDashPhase")
+        lineDashAnimation.fromValue = 0
+        lineDashAnimation.toValue = dashedBorderLayer.lineDashPattern?.reduce(0) { $0 + $1.intValue }
+        lineDashAnimation.duration = 1
+        lineDashAnimation.repeatCount = Float.greatestFiniteMagnitude
+        
+        dashedBorderLayer.add(lineDashAnimation, forKey: "AntsMarchingAnimation")
+    }
+    
+    func pauseDashedBorderAnimation(){
+        guard self.layer.sublayers != nil else{
+            return
+        }
+        
+        var dashedBorderLayer = CAShapeLayer()
+        for layer in self.layer.sublayers!{
+            if(layer.name == "DashedBorder"){
+                dashedBorderLayer = layer as! CAShapeLayer
+            }
+        }
+        
+        guard dashedBorderLayer.animation(forKey: "AntsMarchingAnimation") != nil else{
+            return
+        }
+        dashedBorderLayer.pauseAnimation()
+    }
+    
+    func startDashedBorderAnimation(){
+        guard self.layer.sublayers != nil else{
+            return
+        }
+        
+        var dashedBorderLayer = CAShapeLayer()
+        for layer in self.layer.sublayers!{
+            if(layer.name == "DashedBorder"){
+                dashedBorderLayer = layer as! CAShapeLayer
+            }
+        }
+        
+        guard dashedBorderLayer.animation(forKey: "AntsMarchingAnimation") != nil else{
+            return
+        }
+        
+        dashedBorderLayer.resumeAnimation()
+    }
+    
+    /** Converts the dashed border into a single lined border and removes all prior animations assigned to the dashed border shape layer*/
+    func convertDashedBorderToStraightBorder(){
+        guard self.layer.sublayers != nil else{
+            return
+        }
+        
+        var dashedBorderLayer = CAShapeLayer()
+        for layer in self.layer.sublayers!{
+            if(layer.name == "DashedBorder"){
+                dashedBorderLayer = layer as! CAShapeLayer
+            }
+        }
+        
+        pauseDashedBorderAnimation()
+        dashedBorderLayer.removeAllAnimations()
+        
+        dashedBorderLayer.lineDashPattern = [1,0]
+    }
+    //Dashed Border Methods
+}
+
+extension CALayer
+    {
+        func pauseAnimation() {
+            if isPaused() == false {
+                let pausedTime = convertTime(CACurrentMediaTime(), from: nil)
+                speed = 0.0
+                timeOffset = pausedTime
+            }
+        }
+
+        func resumeAnimation() {
+            if isPaused() {
+                let pausedTime = timeOffset
+                speed = 1.0
+                timeOffset = 0.0
+                beginTime = 0.0
+                let timeSincePause = convertTime(CACurrentMediaTime(), from: nil) - pausedTime
+                beginTime = timeSincePause
+            }
+        }
+
+        func isPaused() -> Bool {
+            return speed == 0
+        }
+    }

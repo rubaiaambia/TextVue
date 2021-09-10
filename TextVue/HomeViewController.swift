@@ -17,7 +17,7 @@ import CoreVideo
 import ARKit
 
 /**The base of operations this is where the magic happens and all other areas of the app are rerouted to*/
-class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
+class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoachingOverlayViewDelegate{
     @IBOutlet weak var photoARModeSegmentedControl: UISegmentedControl!
     /**Import from Photo Library Button*/
     var importButton = UIButton()
@@ -52,6 +52,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     /** Height and width variables for the bottom and top navigation buttons*/
     var bottomButtonSize: CGFloat = 0
     var topButtonSize: CGFloat = 0
+    var selectionButtonSize: CGFloat = 0
     
     /**Capture Session variables*/
     var captureSession: AVCaptureSession!
@@ -76,8 +77,15 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     var isTransientViewBeingPresented = false
     
     /** Augmented Reality variables*/
-    private let configuration = ARWorldTrackingConfiguration()
+    var configuration: ARWorldTrackingConfiguration!
+    /** The view in which the augmented reality scene is constructed in*/
     var sceneView: ARSCNView = ARSCNView()
+    var coachingOverlayView = ARCoachingOverlayView()
+    var selectionBox: UIView!
+    var confirmSelectionButton = UIButton()
+    var cancelSelectionButton = UIButton()
+    /** An array of scene nodes*/
+    var nodes = [SCNNode]()
     
     
     /**Get the camera device that will be used for the capture session, defaults automatically use the best format and frame rate for the current device*/
@@ -109,6 +117,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             let _ = traitCollection.userInterfaceStyle // Either .unspecified, .light, or .dark // Update your user interface based on the appearance }
             loadDarkModePreference()
         }
+        
     }
     
     /**Activated when the view’s content is first painted to the screen*/
@@ -163,7 +172,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         
         switch augmentedRealityModeEnabled{
         case true:
-            sceneView.session.run(configuration)
+            startARSession()
         case false:
             break
         }
@@ -200,24 +209,62 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         switch augmentedRealityModeEnabled{
         case true:
             addARScene()
-            displayARSceneStats()
         case false:
             setCameraView()
         }
         
         constrainARScene()
         setZoomFactorButton()
-        addDoubleTapGesture()
-        addSingleTapGesture()
-        addPinchGesture()
+        addGestureRecognizers()
         setNavButtons()
         setTopNavButtons()
+        setSelectionButtons()
     }
     
     /** Displays general information about the AR Scene such as frames per second and timing*/
     func displayARSceneStats(){
         sceneView.showsStatistics = true
         sceneView.debugOptions = [ARSCNDebugOptions.showFeaturePoints]
+    }
+    
+    /** Configure the world tracking and start the AR Session*/
+    func startARSession(){
+        // Reset the session.
+        configuration = ARWorldTrackingConfiguration()
+        configuration.planeDetection = [.horizontal, .vertical]
+        sceneView.session.run(configuration, options: [.resetTracking])
+    }
+    
+    /** Create and add the ARCoachingOverlayView to the viewcontroller's view*/
+    func setCoach(){
+        coachingOverlayView.frame = view.frame
+        // Make sure it rescales if the device orientation changes
+        coachingOverlayView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // Set the Augmented Reality goal
+        coachingOverlayView.goal = .verticalPlane
+        // Set the ARSession
+        coachingOverlayView.session = sceneView.session
+        // Set the delegate for any callbacks
+        coachingOverlayView.delegate = self
+        
+        view.addSubview(coachingOverlayView)
+    }
+    
+    /** To make sure the coaching overlay provides guidance to the user whenever ARKit determines it’s necessary, you set activatesAutomatically to true.*/
+    func setActivatesAutomatically(){
+        coachingOverlayView.activatesAutomatically = true
+    }
+    
+    func coachingOverlayViewWillActivate(_ coachingOverlayView: ARCoachingOverlayView) {
+        //upperControlsView.isHidden = true
+    }
+    
+    func coachingOverlayViewDidDeactivate(_ coachingOverlayView: ARCoachingOverlayView) {
+        //upperControlsView.isHidden = false
+    }
+    
+    func coachingOverlayViewDidRequestSessionReset(_ coachingOverlayView: ARCoachingOverlayView) {
+        startARSession()
     }
     
     //Logic for viewing capturing and processing images
@@ -286,7 +333,13 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     /** Add the Augmented reality scene to the main view*/
     func addARScene(){
         view.addSubview(sceneView)
-        sceneView.session.run(configuration)
+        startARSession()
+        displayARSceneStats()
+        setActivatesAutomatically()
+        setCoach()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75){[self] in
+            hideCaptureButtons(animated: true)
+        }
     }
     
     /** Remove the Augmented reality scene from the main view and create a new instance of it to release the old memory*/
@@ -303,6 +356,79 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             sceneView.frame = contentFrame
         }
     }
+    
+    func getRaycastQuery(for alignment: ARRaycastQuery.TargetAlignment = .any) -> ARRaycastQuery? {
+        return sceneView.raycastQuery(from: sceneView.center, allowing: .estimatedPlane, alignment: alignment)
+    }
+    
+    func castRay(for query: ARRaycastQuery) -> [ARRaycastResult] {
+        return sceneView.session.raycast(query)
+    }
+    
+    
+    
+    func addBox(x: Float, y: Float, z: Float){
+        let box = SCNBox(width: 0.1, height: 0.1, length: 0.01, chamferRadius: 10)
+        
+        
+        
+        let textView = UITextView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+        textView.backgroundColor = appThemeColor
+        textView.textColor = UIColor.white
+        textView.font = .systemFont(ofSize: 12, weight: .light)
+        textView.isSelectable = true
+        textView.text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+        textView.clipsToBounds = true
+        textView.textAlignment = .center
+        textView.isEditable = false
+        
+        
+        
+        let label = UILabel(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+        label.backgroundColor = appThemeColor
+        label.text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+        label.minimumScaleFactor = 0.1
+        label.lineBreakMode = .byClipping
+        label.numberOfLines = 0
+        label.adjustsFontSizeToFitWidth = true
+        label.font = .systemFont(ofSize: 20, weight: .light)
+        label.textColor = UIColor.white
+        label.clipsToBounds = true
+        label.textAlignment = .center
+        
+        let boxSides = [textView, // front side
+                        appThemeColor, // right side
+                        appThemeColor, // back side
+                        appThemeColor, // left side
+                        appThemeColor, // top side
+                        appThemeColor] // bottom side
+        
+        let sideMaterials = boxSides.map { side -> SCNMaterial in
+            let material = SCNMaterial()
+            material.diffuse.contents = side
+            material.locksAmbientWithDiffuse = true
+            return material
+        }
+        box.materials = sideMaterials
+        
+        let node = SCNTextNode(textView: textView)
+        node.geometry = box
+        node.position = SCNVector3(x,y,z)
+        
+        
+        /** Orient the box to face the camera*/
+        let yawn = sceneView.session.currentFrame?.camera.eulerAngles.y
+        node.eulerAngles.y = (yawn ?? 0) + .pi * 2
+        node.eulerAngles.x = (sceneView.session.currentFrame?.camera.eulerAngles.x ?? 0)
+        
+        nodes.append(node)
+        
+        sceneView.scene.rootNode.addChildNode(node)
+    }
+    
+    
+    
+    
     //Augmented Reality methods
     
     /** Returns a CGRect that's the size and location of the live video content displayed by the camera*/
@@ -441,12 +567,56 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
          */
     }
     
+    /** Adds all required gesture recognizers*/
+    func addGestureRecognizers(){
+        addPanGesture()
+        addPinchGesture()
+        addSingleTapGesture()
+        addDoubleTapGesture()
+        view.isExclusiveTouch = true
+    }
+    
+    /** Pan gesture a user does to draw a selection box around a target text which is then converted into a textview displayed on a 3D rectangle in AR that can be resized and disposed of*/
+    func addPanGesture(){
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(viewPanned))
+        pan.maximumNumberOfTouches = 1
+        pan.minimumNumberOfTouches = 1
+        view.addGestureRecognizer(pan)
+    }
+    
+    /** Handler for recognizing when the user pans the view*/
+    @objc func viewPanned(sender: UIPanGestureRecognizer){
+        let location = sender.location(in: view)
+        
+        if(contentFrame.contains(location) && location.y > (photoARModeSegmentedControl.frame.origin.y + topButtonSize * 1.25) && isTransientViewBeingPresented == false){
+            if(sender.state == .began){
+                hideBottomNavButtons(animated: true)
+                hideZoomFactorButton(animated: true)
+                
+                selectionBox = UIView(frame: CGRect(x: location.x, y: location.y, width: 1, height: 1))
+                selectionBox.addDashedBorder(strokeColor: UIColor.white, fillColor: UIColor.clear, lineWidth: 5, lineDashPattern: [30,10], cornerRadius: 40)
+                selectionBox.animateDashedBorder()
+                view.addSubview(selectionBox)
+            }
+            else if(sender.state == .changed){
+                selectionBox.frame = CGRect(x: selectionBox.frame.origin.x, y: selectionBox.frame.origin.y, width: (location.x - selectionBox.frame.origin.x), height: (location.y - selectionBox.frame.origin.y))
+                selectionBox.updateDashedBorder(cornerRadius: 40)
+            }
+            else if(sender.state == .ended){
+                selectionBox.convertDashedBorderToStraightBorder()
+                showSelectionButtons(animated: true)
+                //selectionBox.removeFromSuperview()
+                //selectionBox = UIView()
+            }
+        }
+        
+    }
+    
     /** Simply add a UI gesture recognizer that recognizes single taps on the screen to this view controller's view*/
     func addSingleTapGesture(){
         let singleTap = UITapGestureRecognizer(target: self, action: #selector(viewSingleTapped))
         singleTap.numberOfTapsRequired = 1
         singleTap.numberOfTouchesRequired = 1
-        view.isExclusiveTouch = true
         view.addGestureRecognizer(singleTap)
     }
     
@@ -495,7 +665,22 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             
             switch augmentedRealityModeEnabled{
             case true:
-                return
+                
+                let results = self.sceneView.hitTest(sender.location(in: self.sceneView), types: .featurePoint)
+                
+                
+                guard let result = results.first else {
+                    return
+                }
+                
+                let translation = result.worldTransform.translation
+                
+                
+                self.addBox(x: translation.x, y: translation.y, z: translation.z)
+                
+                
+                
+                
             case false:
                 /** Crash inbound if the camera device isn't present and the code below is activated, so just return*/
                 guard currentCamera != nil else {
@@ -590,7 +775,6 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(viewDoubleTapped))
         doubleTap.numberOfTapsRequired = 2
         doubleTap.numberOfTouchesRequired = 1
-        view.isExclusiveTouch = true
         view.addGestureRecognizer(doubleTap)
     }
     
@@ -715,6 +899,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             /** Start up the camera and bring the UI Nav buttons forwards*/
             setCameraView()
             bringNavUIForwards()
+            showCaptureButtons(animated: true)
         case 1:
             augmentedRealityModeEnabled = true
             
@@ -724,7 +909,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             addARScene()
             displayARSceneStats()
             bringNavUIForwards()
-            //hideBottomNavButtons(animated: true)
+        //hideBottomNavButtons(animated: true)
         default:
             break
         }
@@ -758,6 +943,59 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         view.bringSubviewToFront(radialBorder1)
         view.bringSubviewToFront(radialBorder2)
         view.bringSubviewToFront(radialBorder3)
+        view.bringSubviewToFront(cancelSelectionButton)
+        view.bringSubviewToFront(confirmSelectionButton)
+    }
+    
+    /** Constructs and sets the positions of the selection buttons for cropping the live video feed for a photo*/
+    func setSelectionButtons(){
+        selectionButtonSize = view.frame.width/4 - view.frame.width * 0.10
+        
+        cancelSelectionButton = UIButton(frame: CGRect(x: view.frame.midX - (selectionButtonSize + 15), y: view.frame.maxY - selectionButtonSize * 1.5, width: selectionButtonSize, height: selectionButtonSize))
+        cancelSelectionButton.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+        cancelSelectionButton.tintColor = UIColor.red
+        cancelSelectionButton.imageView?.contentMode = .scaleAspectFit
+        cancelSelectionButton.contentHorizontalAlignment = .center
+        cancelSelectionButton.layer.cornerRadius = cancelSelectionButton.frame.height/2
+        cancelSelectionButton.layer.shadowColor = UIColor.darkGray.cgColor
+        cancelSelectionButton.layer.shadowRadius = 1
+        cancelSelectionButton.layer.shadowOpacity = 1
+        cancelSelectionButton.clipsToBounds = true
+        cancelSelectionButton.layer.masksToBounds = false
+        cancelSelectionButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        cancelSelectionButton.layer.shadowPath = UIBezierPath(roundedRect: cancelSelectionButton.bounds, cornerRadius: cancelSelectionButton.layer.cornerRadius).cgPath
+        cancelSelectionButton.imageEdgeInsets = UIEdgeInsets(top: cancelSelectionButton.frame.height * 0.25, left: cancelSelectionButton.frame.height * 0.25, bottom: cancelSelectionButton.frame.height * 0.25, right: cancelSelectionButton.frame.height * 0.25)
+        cancelSelectionButton.backgroundColor = UIColor.white
+        cancelSelectionButton.addTarget(self, action: #selector(selectionButtonPressed), for: .touchDown)
+        cancelSelectionButton.tag = 0
+        cancelSelectionButton.isExclusiveTouch = true
+        
+        confirmSelectionButton = UIButton(frame: CGRect(x: view.frame.midX + 15, y: view.frame.maxY - selectionButtonSize * 1.5, width: selectionButtonSize, height: selectionButtonSize))
+        confirmSelectionButton.setImage(UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 100, weight: .regular)), for: .normal)
+        confirmSelectionButton.tintColor = UIColor.green
+        confirmSelectionButton.imageView?.contentMode = .scaleAspectFit
+        confirmSelectionButton.contentHorizontalAlignment = .center
+        confirmSelectionButton.layer.cornerRadius = confirmSelectionButton.frame.height/2
+        confirmSelectionButton.layer.shadowColor = UIColor.darkGray.cgColor
+        confirmSelectionButton.layer.shadowRadius = 1
+        confirmSelectionButton.layer.shadowOpacity = 1
+        confirmSelectionButton.clipsToBounds = true
+        confirmSelectionButton.layer.masksToBounds = false
+        confirmSelectionButton.layer.shadowOffset = CGSize(width: 0, height: 2)
+        confirmSelectionButton.layer.shadowPath = UIBezierPath(roundedRect: confirmSelectionButton.bounds, cornerRadius: confirmSelectionButton.layer.cornerRadius).cgPath
+        confirmSelectionButton.imageEdgeInsets = UIEdgeInsets(top: confirmSelectionButton.frame.height * 0.25, left: confirmSelectionButton.frame.height * 0.25, bottom: confirmSelectionButton.frame.height * 0.25, right: confirmSelectionButton.frame.height * 0.25)
+        confirmSelectionButton.backgroundColor = UIColor.white
+        confirmSelectionButton.addTarget(self, action: #selector(selectionButtonPressed), for: .touchDown)
+        confirmSelectionButton.tag = 1
+        confirmSelectionButton.isExclusiveTouch = true
+        
+        view.addSubview(cancelSelectionButton)
+        view.addSubview(confirmSelectionButton)
+        
+        /** Give the UI time to update before animating*/
+        DispatchQueue.main.async{ [self] in
+            hideSelectionButtons(animated: false)
+        }
     }
     
     //Constructor Methods for top and bottom navigation buttons
@@ -823,9 +1061,11 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         /** Give the UI time to update before animating*/
         DispatchQueue.main.async { [self] in
             hideTopNavButtons(animated: false)
+            hideZoomFactorButton(animated: false)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1){ [self] in
             showTopNavButtons(animated: true)
+            showZoomFactorButton(animated: true)
         }
     }
     
@@ -850,6 +1090,32 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         zoomFactorButton.isExclusiveTouch = true
         
         view.addSubview(zoomFactorButton)
+    }
+    
+    /**Hides the zoom factor button from the user in an animated or non animated fashion*/
+    func hideZoomFactorButton(animated:Bool){
+        zoomFactorButton.isEnabled = false
+        switch animated{
+        case true:
+            UIView.animate(withDuration: 0.5, delay: 0){[self] in
+                zoomFactorButton.alpha = 0
+            }
+        case false:
+            zoomFactorButton.alpha = 0
+        }
+    }
+    
+    /**Shows the zoom factor button to the user in an animated or non animated fashion*/
+    func showZoomFactorButton(animated:Bool){
+        zoomFactorButton.isEnabled = true
+        switch animated{
+        case true:
+            UIView.animate(withDuration: 0.5, delay: 0){[self] in
+                zoomFactorButton.alpha = 1
+            }
+        case false:
+            zoomFactorButton.alpha = 1
+        }
     }
     
     /**Create navigation buttons*/
@@ -1121,9 +1387,62 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         isTransientViewBeingPresented = false
         switch augmentedRealityModeEnabled{
         case true:
-            sceneView.session.run(configuration)
+            startARSession()
         case false:
             break
+        }
+    }
+    
+    /** Action handler for  touch down events on the selection buttons*/
+    @objc func selectionButtonPressed(sender: UIButton){
+        hapticFeedBack(FeedbackStyle: .rigid)
+        
+        /** Prevent the user from triggering the button in rapid succession*/
+        sender.isEnabled = false
+        
+        /** Make the view slightly transparent and scale it down followed by immediately undoing said transforms and alpha changes*/
+        UIView.animate(withDuration: 0.25, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            let scale = CGAffineTransform(scaleX: 0.8, y: 0.8)
+            let translate = CGAffineTransform(translationX: 0, y: -20)
+            sender.transform = scale.concatenating(translate)
+        }
+        UIView.animate(withDuration: 0.25, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn, .allowUserInteraction]){
+            let scale = CGAffineTransform(scaleX: 1, y: 1)
+            let translate = CGAffineTransform(translationX: 0, y: 0)
+            sender.transform = scale.concatenating(translate)
+        }
+        UIView.animate(withDuration: 0.25){
+            sender.alpha = 0.9
+        }
+        UIView.animate(withDuration: 0.25, delay: 0.25){
+            sender.alpha = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){
+            sender.isEnabled = true
+        }
+        
+        switch sender.tag {
+        //Cancel the selection box
+        case 0:
+            UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                selectionBox.transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4){[self] in
+                selectionBox.removeFromSuperview()
+                hideSelectionButtons(animated: true)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
+                showBottomNavButtons(animated: true)
+            }
+        //Confirm the selection box
+        case 1:
+            selectionBox.removeFromSuperview()
+            hideSelectionButtons(animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
+                showBottomNavButtons(animated: true)
+            }
+        default:
+            return
         }
     }
     
@@ -1196,6 +1515,42 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
         }
     }
     
+    /** Hides selection buttons statically or in an animated manner*/
+    func hideSelectionButtons(animated:Bool){
+        cancelSelectionButton.isEnabled = false
+        confirmSelectionButton.isEnabled = false
+        switch animated {
+        case true:
+            UIView.animate(withDuration: 0.5, delay: 0.2, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                cancelSelectionButton.frame.origin = CGPoint(x: view.frame.midX - (selectionButtonSize + 15), y: view.frame.maxY + selectionButtonSize * 5)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.4, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                confirmSelectionButton.frame.origin = CGPoint(x: view.frame.midX + 15, y: view.frame.maxY + selectionButtonSize * 5)
+            }
+        case false:
+            cancelSelectionButton.frame.origin = CGPoint(x: view.frame.midX - (selectionButtonSize + 15), y: view.frame.maxY + selectionButtonSize * 5)
+            confirmSelectionButton.frame.origin = CGPoint(x: view.frame.midX + 15, y: view.frame.maxY + selectionButtonSize * 5)
+        }
+    }
+    
+    /** Shows selection buttons statically or in an animated manner*/
+    func showSelectionButtons(animated:Bool){
+        cancelSelectionButton.isEnabled = true
+        confirmSelectionButton.isEnabled = true
+        switch animated {
+        case true:
+            UIView.animate(withDuration: 0.5, delay: 0.2, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                cancelSelectionButton.frame.origin = CGPoint(x: view.frame.midX - (selectionButtonSize + 15), y: view.frame.maxY - selectionButtonSize * 1.5)
+            }
+            UIView.animate(withDuration: 0.5, delay: 0.4, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
+                confirmSelectionButton.frame.origin = CGPoint(x: view.frame.midX + 15, y: view.frame.maxY - selectionButtonSize * 1.5)
+            }
+        case false:
+            cancelSelectionButton.frame.origin = CGPoint(x: view.frame.midX - (selectionButtonSize + 15), y: view.frame.maxY - selectionButtonSize * 1.5)
+            confirmSelectionButton.frame.origin = CGPoint(x: view.frame.midX + 15, y: view.frame.maxY - selectionButtonSize * 1.5)
+        }
+    }
+    
     /** Shows capture buttons and associated views statically or in an animated manner*/
     func showCaptureButtons(animated: Bool){
         switch animated {
@@ -1250,6 +1605,11 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     /** Hide bottom navigation buttons in a static or animated manner*/
     func hideBottomNavButtons(animated: Bool){
+        bottomNavButtons[0].isEnabled = false
+        bottomNavButtons[1].isEnabled = false
+        bottomNavButtons[2].isEnabled = false
+        bottomNavButtons[3].isEnabled = false
+        
         switch animated {
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
@@ -1264,20 +1624,11 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             UIView.animate(withDuration: 0.5, delay: 0.6, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY + bottomButtonSize * 5)
             }
-            bottomNavButtons[0].isEnabled = false
-            bottomNavButtons[1].isEnabled = false
-            bottomNavButtons[2].isEnabled = false
-            bottomNavButtons[3].isEnabled = false
         case false:
             bottomNavButtons[0].frame.origin = CGPoint(x: importButton.frame.minX - (bottomButtonSize + 10), y: view.frame.maxY + bottomButtonSize * 5)
             bottomNavButtons[1].frame.origin = CGPoint(x: view.frame.midX - (bottomButtonSize + 5), y: view.frame.maxY + bottomButtonSize * 5)
             bottomNavButtons[2].frame.origin = CGPoint(x: view.frame.midX + 5, y: view.frame.maxY + bottomButtonSize * 5)
             bottomNavButtons[3].frame.origin = CGPoint(x: textToSpeechButton.frame.maxX + (10), y: view.frame.maxY + bottomButtonSize * 5)
-            
-            bottomNavButtons[0].isEnabled = false
-            bottomNavButtons[1].isEnabled = false
-            bottomNavButtons[2].isEnabled = false
-            bottomNavButtons[3].isEnabled = false
         }
     }
     
@@ -1317,6 +1668,9 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
     
     /** Hide top navigation buttons in a static or animated manner*/
     func hideTopNavButtons(animated: Bool){
+        topNavButtons[0].isEnabled = false
+        topNavButtons[1].isEnabled = false
+        
         switch animated{
         case true:
             UIView.animate(withDuration: 0.5, delay: 0, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
@@ -1325,13 +1679,9 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate{
             UIView.animate(withDuration: 0.5, delay: 0.25, usingSpringWithDamping: 0.7, initialSpringVelocity: 1, options: [.curveEaseIn]){[self] in
                 topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
             }
-            topNavButtons[0].isEnabled = false
-            topNavButtons[1].isEnabled = false
         case false:
             topNavButtons[0].frame.origin = CGPoint(x: view.frame.minX - topButtonSize * 2, y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
             topNavButtons[1].frame.origin = CGPoint(x: view.frame.maxX + (topButtonSize * 4), y: photoARModeSegmentedControl.frame.origin.y + topButtonSize/4)
-            topNavButtons[0].isEnabled = false
-            topNavButtons[1].isEnabled = false
         }
     }
     
