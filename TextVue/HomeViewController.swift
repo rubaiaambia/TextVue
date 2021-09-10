@@ -598,6 +598,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
         
         if(contentFrame.contains(location) && location.y > (photoARModeSegmentedControl.frame.origin.y + topButtonSize * 1.25) && isTransientViewBeingPresented == false){
             if(sender.state == .began){
+                guard sender.view.superview as? self == nil else{
+                return
+             }
+
                 hideBottomNavButtons(animated: true)
                 hideZoomFactorButton(animated: true)
                 
@@ -1087,7 +1091,9 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1){ [self] in
             showTopNavButtons(animated: true)
+            if(augmentedRealityModeEnabled == true){
             showZoomFactorButton(animated: true)
+            }
         }
     }
     
