@@ -167,8 +167,10 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
         if isTransientViewBeingPresented == false{
             blurredView.removeFromSuperview()
         }
+        if augmentedRealityModeEnabled == false{
         removeCaptureButtonAnimations()
         animateCaptureButton()
+        }
     }
     
     /** Activates when the application regains focus*/
@@ -593,14 +595,37 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     }
     
     /** Handler for recognizing when the user pans the view*/
+    //   contentFrame
+    //0px-------------  > Max Selection Box frame size and placement:
+    // | ____________ | > (1.25 * top Button size) Displacement from top buttons vertically
+    // ||Selection   || > 20px displacement from minX(Horizontal min / Left side of screen (0px)) and maxX(Horizontal max / right side of screen(view's width))
+    // ||Box Frame   || > 20px displacement from maxY(Vertical bottom of screen(view's Height))
+    // ||            || =>view.frame.width
+    // ||            ||
+    // ||            ||
+    // ||            ||
+    // ||            ||
+    // ||            ||
+    // ||____________||
+    // |--------------|=>contentFrame.height
+    // |______________|=>view.frame.height
     @objc func viewPanned(sender: UIPanGestureRecognizer){
+        /** Don't recognize any pans if a view is being presented right now*/
+        guard isTransientViewBeingPresented == false else {
+            return
+        }
+        
         let location = sender.location(in: view)
         
-        if(contentFrame.contains(location) && location.y > (photoARModeSegmentedControl.frame.origin.y + topButtonSize * 1.25) && isTransientViewBeingPresented == false){
+        /** The condition that restricts the selection box to a specified frame size*/
+        let condition = (contentFrame.contains(location) && location.y > (photoARModeSegmentedControl.frame.origin.y + topButtonSize * 1.25))
+        
+        if(condition){
             if(sender.state == .began){
-                guard sender.view.superview as? self == nil else{
-                return
-             }
+                hapticFeedBack(FeedbackStyle: .light)
+                if selectionBox != nil{
+                removeSelectionBox(animated: false)
+                }
 
                 hideBottomNavButtons(animated: true)
                 hideZoomFactorButton(animated: true)
@@ -619,7 +644,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
                 selectionBox.updateDashedBorder(cornerRadius: 20,strokeColor: UIColor.white)
                 }
             }
-            else if(sender.state == .ended){
+            else if(sender.state == .ended || sender.state == .cancelled || sender.state == .failed){
                 if(selectionBox.frame.height >= view.frame.width/4 && selectionBox.frame.width >= view.frame.width/4){
                 selectionBox.updateDashedBorder(cornerRadius: 20,strokeColor: UIColor.white)
                 selectionBox.convertDashedBorderToStraightBorder()
@@ -629,7 +654,21 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
                 else{
                 hapticFeedBack(FeedbackStyle: .heavy)
                 removeSelectionBox(animated: true)
+                showBottomNavButtons(animated: true)
                 }
+            }
+        }
+        else if(sender.state == .ended || sender.state == .cancelled || sender.state == .failed){
+            if(selectionBox.frame.height >= view.frame.width/4 && selectionBox.frame.width >= view.frame.width/4){
+            selectionBox.updateDashedBorder(cornerRadius: 20,strokeColor: UIColor.white)
+            selectionBox.convertDashedBorderToStraightBorder()
+            hapticFeedBack(FeedbackStyle: .light)
+            showSelectionButtons(animated: true)
+            }
+            else{
+            hapticFeedBack(FeedbackStyle: .heavy)
+            removeSelectionBox(animated: true)
+            showBottomNavButtons(animated: true)
             }
         }
         
@@ -645,8 +684,12 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Handler for recognizing when the user taps the view one time*/
     @objc func viewSingleTapped(sender: UITapGestureRecognizer){
+        /** Don't recognize any pans if a view is being presented right now*/
+        guard isTransientViewBeingPresented == false else {
+            return
+        }
         
-        if(contentFrame.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true && isTransientViewBeingPresented == false){
+        if(contentFrame.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true){
             hapticFeedBack(FeedbackStyle: .soft)
             
             /** Snapchat esque circular fade in fade out animation signals where the user has tapped*/
@@ -803,6 +846,11 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
     
     /** Handler for recognizing when the user taps the view two times in a row*/
     @objc func viewDoubleTapped(sender: UITapGestureRecognizer){
+        /** Don't recognize any pans if a view is being presented right now*/
+        guard isTransientViewBeingPresented == false else {
+            return
+        }
+        
         sender.isEnabled = false
         
         /** Delay the pressing of this button, if the user pressed this in rapid sucession they'll block the UI and interrupt the global queue*/
@@ -815,7 +863,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
             return
         case false:
             /**Prevent a camera switch from being triggered while a transient view is being presented and the switch camera button is being used, also only register touches inside of the video preview layer and not inside of the switch camera button under any circumstances*/
-            if(contentFrame.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true && isTransientViewBeingPresented == false){
+            if(contentFrame.contains(sender.location(in: view)) && !switchCameraButton.frame.contains(sender.location(in: view)) && switchCameraButton.isEnabled == true){
                 hapticFeedBack(FeedbackStyle: .rigid)
                 
                 /** Animate this button since it does the same operation as the double tap gesture*/
@@ -925,6 +973,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
             setCameraView()
             bringNavUIForwards()
             showCaptureButtons(animated: true)
+            animateCaptureButton()
             showZoomFactorButton(animated: true)
         case 1:
             augmentedRealityModeEnabled = true
@@ -1091,7 +1140,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1){ [self] in
             showTopNavButtons(animated: true)
-            if(augmentedRealityModeEnabled == true){
+            if(augmentedRealityModeEnabled == false){
             showZoomFactorButton(animated: true)
             }
         }
@@ -1453,9 +1502,15 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
         //Cancel the selection box
         case 0:
             removeSelectionBox(animated: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
+                showBottomNavButtons(animated: true)
+            }
         //Confirm the selection box
         case 1:
             removeSelectionBox(animated: false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
+                showBottomNavButtons(animated: true)
+            }
         default:
             return
         }
@@ -1472,16 +1527,9 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
                 selectionBox.removeFromSuperview()
                 hideSelectionButtons(animated: true)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1){[self] in
-                showBottomNavButtons(animated: true)
-            }
         case false:
                 selectionBox.removeFromSuperview()
                 hideSelectionButtons(animated: true)
-            
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5){[self] in
-                showBottomNavButtons(animated: true)
-            }
         }
         
     }
