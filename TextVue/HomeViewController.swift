@@ -971,8 +971,8 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
             
             /** Start up the camera and bring the UI Nav buttons forwards*/
             setCameraView()
-            bringNavUIForwards()
             showCaptureButtons(animated: true)
+            bringNavUIForwards()
             animateCaptureButton()
             showZoomFactorButton(animated: true)
         case 1:
@@ -1010,7 +1010,6 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
         view.bringSubviewToFront(flashLightButton)
         view.bringSubviewToFront(artificialFlashLight)
         view.bringSubviewToFront(switchCameraButton)
-        view.bringSubviewToFront(capturePictureButton)
         view.bringSubviewToFront(myProfileButton)
         view.bringSubviewToFront(settingsButton)
         view.bringSubviewToFront(zoomFactorButton)
@@ -1020,6 +1019,7 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
         view.bringSubviewToFront(radialBorder3)
         view.bringSubviewToFront(cancelSelectionButton)
         view.bringSubviewToFront(confirmSelectionButton)
+        view.bringSubviewToFront(capturePictureButton)
     }
     
     /** Constructs and sets the positions of the selection buttons for cropping the live video feed for a photo*/
