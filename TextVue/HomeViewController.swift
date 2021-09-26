@@ -628,7 +628,6 @@ class HomeViewController: UIViewController, AVCapturePhotoCaptureDelegate, ARCoa
                 }
 
                 hideBottomNavButtons(animated: true)
-                hideZoomFactorButton(animated: true)
                 
                 selectionBox = UIView(frame: CGRect(x: location.x, y: location.y, width: 1, height: 1))
                 selectionBox.addDashedBorder(strokeColor: UIColor.white, fillColor: UIColor.clear, lineWidth: 5, lineDashPattern: [30,10], cornerRadius: 20)
